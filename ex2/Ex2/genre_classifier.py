@@ -57,8 +57,8 @@ class MusicClassifier:
         - You could use kwargs (dictionary) for any other variables you wish to pass in here.
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
-        self.weights = np.zeros(shape=(kwargs["num_features"], len(Genre)))
-        self.biases = np.zeros(shape=(1, len(Genre)))
+        self.weights = torch.zeros(size=(kwargs["num_features"], len(Genre)))
+        self.biases = torch.zeros(size=(1, len(Genre)))
         self.opt_params = opt_params
 
     def exctract_feats(self, wavs: torch.Tensor):
@@ -67,13 +67,24 @@ class MusicClassifier:
         we will not be observing this method.
         """
         # this function extract features from a given audio.
-        # we will not be observing this method.
-        pass
+        # the first manual feature that will be extracted from the wav to detect it's genre is the zero crossing rate.
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(wavs)
+        # the second manual feature that will be extracted from the wav to detect it's genre is the spectral centroid.
+        spectral_centroid = librosa.feature.spectral_centroid(wavs)
+        # the third manual feature that will be extracted from the wav to detect it's genre is the spectral rolloff.
+        # the fourth manual feature that will be extracted from the wav to detect it's genre is the spectral bandwidth.
+        # the fifth manual feature that will be extracted from the wav to detect it's genre is the spectral contrast.
+        # the sixth manual feature that will be extracted from the wav to detect it's genre is the spectral flatness.
+        # the seventh manual feature that will be extracted from the wav to detect it's genre is the chroma frequency.
+        # the eighth manual feature that will be extracted from the wav to detect it's genre is the chroma deviation.
+        # the ninth manual feature that will be extracted from the wav to detect it's genre is the tonnetz.
 
+        return torch.cat((zero_crossing_rate, spectral_centroid), dim=0)
     # softmax function for numerical stability
     @staticmethod
-    def softmax(self, x):
-        return np.exp(x) / np.sum(np.exp(x), axis=0)
+    def softmax(z):
+        exp_scores = torch.exp(z)
+        return exp_scores / torch.sum(exp_scores, axis=1, keepdims=True)
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
         """
@@ -105,8 +116,8 @@ class MusicClassifier:
         d_scores[range(num_examples), labels] -= 1
         d_scores /= num_examples
 
-        d_weights = np.dot(feats.T, d_scores)
-        d_biases = np.sum(d_scores, axis=0, keepdims=True)
+        d_weights = np.dot(feats.T,d_scores)
+        d_biases = torch.sum(d_scores, axis=0, keepdims=True)
 
         # Update weights and biases
         self.weights -= self.opt_params.learning_rate * d_weights
@@ -119,8 +130,8 @@ class MusicClassifier:
 
     def calculate_loss(self, output_scores, labels):
         num_examples = output_scores.shape[0]
-        correct_logprobs = -np.log(output_scores[range(num_examples), labels])
-        data_loss = np.sum(correct_logprobs) / num_examples
+        correct_logprobs = -torch.log(output_scores[range(num_examples), labels])
+        data_loss = torch.sum(correct_logprobs) / num_examples
         return data_loss
 
     def get_weights_and_biases(self):
@@ -146,6 +157,17 @@ class MusicClassifier:
 
         num_epochs = training_parameters.num_epochs
         batch_size = training_parameters.batch_size
+        train_data = ClassifierHandler.load_wav_files(training_parameters.train_json_path)
+        test_data = ClassifierHandler.load_wav_files(training_parameters.test_json_path)
+        for epoch in range(num_epochs):
+            for i in range(0, len(train_data), batch_size):
+                batch = train_data[i:i + batch_size]
+                data = batch['audio']
+                labels = batch['label']
+                feats = self.exctract_feats(data)
+                output_scores = self.forward(feats)
+                loss = self.backward(feats, output_scores, labels)
+                print('Epoch: {}, Loss: {}'.format(epoch + 1, loss))
 
 
 class ClassifierHandler:
@@ -167,7 +189,7 @@ class ClassifierHandler:
 
         opti_params = OptimizationParameters()
 
-        music_classifier = MusicClassifier(opti_params)
+        music_classifier = MusicClassifier(opti_params, **{'num_features': 1})
 
         music_classifier.train(training_parameters)
 
@@ -192,13 +214,14 @@ class ClassifierHandler:
             data = json.load(json_file)
 
         # Create an empty DataFrame
-        df = pd.DataFrame(columns=['path', 'label', 'audio'])
+        df = pd.DataFrame(columns=['label', 'audio', 'sr'])
 
         # Iterate over each item in the JSON data
         for item in data:
             path = item['path']
             label = item['label']
-
+            label = str.replace(label, '-', '_')
+            label = Genre[label.upper()].value
             # Load the audio file using librosa
             audio, sr = librosa.load(path, sr=None)
 
