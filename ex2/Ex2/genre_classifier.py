@@ -69,10 +69,11 @@ class MusicClassifier:
         """
         # this function extract features from a given audio.
         # the first manual feature that will be extracted from the wav to detect it's genre is the zero crossing rate.
-        zero_crossing_rate = torchaudio.functional.zero_crossing_rate(wavs)
-        # zero_crossing_rate = librosa.feature.zero_crossing_rate(wavs)
+        # zero_crossing_rate = torchaudio.functional.zero_crossing_rate(wavs)
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(np.array(wavs))
+        mean_zcr = np.mean(zero_crossing_rate, axis=(1, 2))
         # the second manual feature that will be extracted from the wav to detect it's genre is the spectral centroid.
-        spectral_centroid = librosa.feature.spectral_centroid(wavs)
+        # spectral_centroid = librosa.feature.spectral_centroid(np.array(wavs))
         # the third manual feature that will be extracted from the wav to detect it's genre is the spectral rolloff.
         # the fourth manual feature that will be extracted from the wav to detect it's genre is the spectral bandwidth.
         # the fifth manual feature that will be extracted from the wav to detect it's genre is the spectral contrast.
@@ -81,7 +82,7 @@ class MusicClassifier:
         # the eighth manual feature that will be extracted from the wav to detect it's genre is the chroma deviation.
         # the ninth manual feature that will be extracted from the wav to detect it's genre is the tonnetz.
 
-        return torch.cat((zero_crossing_rate, spectral_centroid), dim=0)
+        return mean_zcr
     # softmax function for numerical stability
     @staticmethod
     def softmax(z):
