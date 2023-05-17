@@ -1,5 +1,8 @@
 import json
 from abc import abstractmethod
+
+import librosa as librosa
+import pandas as pd
 import torch
 from enum import Enum
 import typing as tp
@@ -139,8 +142,10 @@ class MusicClassifier:
         # (single channel) waveforms of length T . Assume the input is always of this form (shape [B, 1, T ]) where
         # B = 1 in the single example case.
 
-    def train(self):
-        pass
+    def train(self, training_parameters: TrainingParameters):
+
+        num_epochs = training_parameters.num_epochs
+        batch_size = training_parameters.batch_size
 
 
 class ClassifierHandler:
@@ -157,14 +162,14 @@ class ClassifierHandler:
         # load the data from the json files
 
         # load data
-        train_data = json.load(open(training_parameters.train_json_path))
-        test_data = json.load(open(training_parameters.test_json_path))
+        train_data = ClassifierHandler.load_wav_files("jsons/test.json")
+        test_data = ClassifierHandler.load_wav_files("jsons/test.json")
 
         opti_params = OptimizationParameters()
 
         music_classifier = MusicClassifier(opti_params)
 
-        music_classifier.train()
+        music_classifier.train(training_parameters)
 
         # save the model
         torch.save(music_classifier, 'model.pth')
@@ -180,12 +185,33 @@ class ClassifierHandler:
         model = torch.load('model.pth')
         return model
 
+    @staticmethod
+    def load_wav_files(json_file_path):
+        # Read the JSON file
+        with open(json_file_path) as json_file:
+            data = json.load(json_file)
 
-file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
-ClassifierHandler.train_new_model(TrainingParameters())
-model = ClassifierHandler.get_pretrained_model()
-audio_file = librosa.load(file_name)
-model.classify()
+        # Create an empty DataFrame
+        df = pd.DataFrame(columns=['path', 'label', 'audio'])
 
-opti_params = OptimizationParameters()
-music_classifier = MusicClassifier.train_new_model(TrainingParameters())
+        # Iterate over each item in the JSON data
+        for item in data:
+            path = item['path']
+            label = item['label']
+
+            # Load the audio file using librosa
+            audio, sr = librosa.load(path, sr=None)
+
+            # Append the path, label, and audio to the DataFrame
+            df = df.append({'label': label, 'audio': audio, 'sr': sr}, ignore_index=True)
+
+        return df
+
+
+if __name__ == '__main__':
+    file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
+    ClassifierHandler.train_new_model(TrainingParameters())
+    model = ClassifierHandler.get_pretrained_model()
+    wav = torch.load(file_name)
+    outputs = model.classify(wav)
+    assert outputs[0] == Genre.CLASSICAL
