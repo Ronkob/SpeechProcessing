@@ -1,8 +1,10 @@
+import json
 from abc import abstractmethod
 import torch
 from enum import Enum
 import typing as tp
 from dataclasses import dataclass
+import numpy as np
 
 
 class Genre(Enum):
@@ -52,21 +54,34 @@ class MusicClassifier:
         - You could use kwargs (dictionary) for any other variables you wish to pass in here.
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
-        raise NotImplementedError("function is not implemented")
+        self.weights = np.zeros(shape=(kwargs["num_features"], len(Genre)))
+        self.biases = np.zeros(shape=(1, len(Genre)))
+        self.opt_params = opt_params
 
     def exctract_feats(self, wavs: torch.Tensor):
         """
         this function extract features from a given audio.
         we will not be observing this method.
         """
-        raise NotImplementedError("optional, function is not implemented")
+        # this function extract features from a given audio.
+        # we will not be observing this method.
+        pass
+
+    # softmax function for numerical stability
+    @staticmethod
+    def softmax(self, x):
+        return np.exp(x) / np.sum(np.exp(x), axis=0)
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
         """
         this function performs a forward pass throuh the model, outputting scores for every class.
         feats: batch of extracted faetures
         """
-        # raise NotImplementedError("optional, function is not implemented")
+        # a function that implements a forward pass through the model, outputting scores for every class.
+        # feats: batch of extracted faetures
+        # return: scores for every class
+        x = feats @ self.weights + self.biases
+        return self.softmax(x)
 
     def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor):
         """
@@ -79,7 +94,31 @@ class MusicClassifier:
         We thought it may result in less coding needed if you are to apply it here, hence 
         OptimizationParameters are passed to the initialization function
         """
-        raise NotImplementedError("optional, function is not implemented")
+
+        num_examples = feats.shape[0]
+
+        # Compute gradients
+        d_scores = output_scores
+        d_scores[range(num_examples), labels] -= 1
+        d_scores /= num_examples
+
+        d_weights = np.dot(feats.T, d_scores)
+        d_biases = np.sum(d_scores, axis=0, keepdims=True)
+
+        # Update weights and biases
+        self.weights -= self.opt_params.learning_rate * d_weights
+        self.biases -= self.opt_params.learning_rate * d_biases
+
+        # Calculate the loss
+        loss = self.calculate_loss(output_scores, labels)
+
+        return loss
+
+    def calculate_loss(self, output_scores, labels):
+        num_examples = output_scores.shape[0]
+        correct_logprobs = -np.log(output_scores[range(num_examples), labels])
+        data_loss = np.sum(correct_logprobs) / num_examples
+        return data_loss
 
     def get_weights_and_biases(self):
         """
@@ -88,7 +127,6 @@ class MusicClassifier:
         """
         # This function returns the weights and biases associated with this model object,
         # should return a tuple: (weights, biases)
-
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
@@ -101,7 +139,8 @@ class MusicClassifier:
         # (single channel) waveforms of length T . Assume the input is always of this form (shape [B, 1, T ]) where
         # B = 1 in the single example case.
 
-
+    def train(self):
+        pass
 
 
 class ClassifierHandler:
@@ -115,8 +154,20 @@ class ClassifierHandler:
         # should initialize a complete training (loading data, init model, start training/fitting) and
         # to save weights/other to model files directory. This function should recieve a TrainingParameters dataclass
         # object and perform training accordingly, see code documentation for further details.
+        # load the data from the json files
 
+        # load data
+        train_data = json.load(open(training_parameters.train_json_path))
+        test_data = json.load(open(training_parameters.test_json_path))
 
+        opti_params = OptimizationParameters()
+
+        music_classifier = MusicClassifier(opti_params)
+
+        music_classifier.train()
+
+        # save the model
+        torch.save(music_classifier, 'model.pth')
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
@@ -124,4 +175,17 @@ class ClassifierHandler:
         This function should construct a 'MusicClassifier' object, load it's trained weights / 
         hyperparameters and return the loaded model
         """
-        raise NotImplementedError("function is not implemented")
+        # should load a model from model files directory. This function should return a MusicClassifier object
+        # with loaded weights/other.
+        model = torch.load('model.pth')
+        return model
+
+
+file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
+ClassifierHandler.train_new_model(TrainingParameters())
+model = ClassifierHandler.get_pretrained_model()
+audio_file = librosa.load(file_name)
+model.classify()
+
+opti_params = OptimizationParameters()
+music_classifier = MusicClassifier.train_new_model(TrainingParameters())
