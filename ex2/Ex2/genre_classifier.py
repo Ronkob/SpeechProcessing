@@ -8,6 +8,7 @@ from enum import Enum
 import typing as tp
 from dataclasses import dataclass
 import numpy as np
+import torchaudio
 
 
 class Genre(Enum):
@@ -68,7 +69,8 @@ class MusicClassifier:
         """
         # this function extract features from a given audio.
         # the first manual feature that will be extracted from the wav to detect it's genre is the zero crossing rate.
-        zero_crossing_rate = librosa.feature.zero_crossing_rate(wavs)
+        zero_crossing_rate = torchaudio.functional.zero_crossing_rate(wavs)
+        # zero_crossing_rate = librosa.feature.zero_crossing_rate(wavs)
         # the second manual feature that will be extracted from the wav to detect it's genre is the spectral centroid.
         spectral_centroid = librosa.feature.spectral_centroid(wavs)
         # the third manual feature that will be extracted from the wav to detect it's genre is the spectral rolloff.
@@ -162,8 +164,8 @@ class MusicClassifier:
         for epoch in range(num_epochs):
             for i in range(0, len(train_data), batch_size):
                 batch = train_data[i:i + batch_size]
-                data = batch['audio']
-                labels = batch['label']
+                data = torch.tensor(batch['audio'])
+                labels = torch.tensor(batch['label'])
                 feats = self.exctract_feats(data)
                 output_scores = self.forward(feats)
                 loss = self.backward(feats, output_scores, labels)
@@ -195,6 +197,8 @@ class ClassifierHandler:
 
         # save the model
         torch.save(music_classifier, 'model.pth')
+
+        return music_classifier
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
