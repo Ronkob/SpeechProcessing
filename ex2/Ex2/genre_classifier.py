@@ -174,7 +174,6 @@ class MusicClassifier:
 
 
 class ClassifierHandler:
-
     @staticmethod
     def train_new_model(training_parameters: TrainingParameters) -> MusicClassifier:
         """
@@ -235,11 +234,59 @@ class ClassifierHandler:
 
         return df
 
+def tmp():
+    training_parameters = TrainingParameters()
+    train_data = ClassifierHandler.load_wav_files(training_parameters.train_json_path)
+    #
+    wavs = torch.tensor(train_data['audio'])
+    # labels = torch.tensor(train_data['label'])
+
+    ###
+
+    features = []
+    for wav in wavs:
+        # Extract MFCC features
+        mfcc = librosa.feature.mfcc()(wav.numpy().squeeze(), sr=44100)
+
+        # Extract zero-crossing rate
+        zc = librosa.feature.zero_crossing_rate(wav.numpy().squeeze())
+
+        # Extract amplitude envelope
+        ae = librosa.amplitude_to_db(librosa.onset.onset_strength(wav.numpy().squeeze()))
+
+        # Extract root mean square
+        rms = librosa.feature.rms(wav.numpy().squeeze())
+
+        # Extract spectral centroid
+        centroid = librosa.feature.spectral_centroid(wav.numpy().squeeze())
+
+        # Extract spectral contrast
+        contrast = librosa.feature.spectral_contrast(wav.numpy().squeeze())
+
+        # Extract chromagram
+        chroma = librosa.feature.chroma_stft(wav.numpy().squeeze(), sr=44100)
+
+        # Extract mel-frequency spectral flatness
+        flatness = librosa.feature.spectral_flatness(wav.numpy().squeeze())
+
+        # Extract spectral roll-off
+        rolloff = librosa.feature.spectral_rolloff(wav.numpy().squeeze())
+
+        # Concatenate all features
+        feature = torch.cat(
+            [torch.tensor(f) for f in [mfcc, zc, ae, rms, centroid, contrast, chroma, flatness, rolloff]], dim=0)
+
+        features.append(feature)
+
+    return torch.stack(features)
+
 
 if __name__ == '__main__':
-    file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
-    ClassifierHandler.train_new_model(TrainingParameters())
-    model = ClassifierHandler.get_pretrained_model()
-    wav = torch.load(file_name)
-    outputs = model.classify(wav)
-    assert outputs[0] == Genre.CLASSICAL
+    # file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
+    # ClassifierHandler.train_new_model(TrainingParameters())
+    # model = ClassifierHandler.get_pretrained_model()
+    # wav = torch.load(file_name)
+    # outputs = model.classify(wav)
+    # assert outputs[0] == Genre.CLASSICAL
+    tmp()
+
