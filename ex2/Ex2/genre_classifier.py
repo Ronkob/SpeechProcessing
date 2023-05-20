@@ -108,14 +108,62 @@ class MusicClassifier:
         features_list.append(torch.tensor(avg_log_rms, dtype=torch.float32).view(batch_size, 1))
         features_list.append(torch.tensor(std_log_rms, dtype=torch.float32).view(batch_size, 1))
 
-        # # Extract MFCC features
-        mfcc = librosa.feature.mfcc(y=data, n_mfcc=13)
+        # # fifth family MFCC features
+        mfcc = librosa.feature.mfcc(y=data, n_mfcc=13, n_fft=512)
         # Padding first and second deltas
         delta_mfcc = librosa.feature.delta(mfcc)
         delta2_mfcc = librosa.feature.delta(mfcc, order=2)
         zero_order_mfcc = np.mean(mfcc, axis=2)
         first_order_mfcc = np.mean(delta_mfcc, axis=2)
         second_order_mfcc = np.mean(delta2_mfcc, axis=2)
+
+        # sixth family - chroma
+        chroma = librosa.feature.chroma_stft(y=data)
+        avg_chroma = np.mean(chroma, axis=(1, 2))
+        std_chroma = np.std(chroma, axis=(1, 2))
+        # print("chroma: ", chroma.shape, avg_chroma.shape, std_chroma.shape)
+        features_list.append(torch.tensor(avg_chroma, dtype=torch.float32).view(batch_size, 1))
+        features_list.append(torch.tensor(std_chroma, dtype=torch.float32).view(batch_size, 1))
+
+        # seventh family - tonnetz
+        tonnetz = librosa.feature.tonnetz(y=data)
+        avg_tonnetz = np.mean(tonnetz, axis=(1, 2))
+        std_tonnetz = np.std(tonnetz, axis=(1, 2))
+        # print("tonnetz: ", tonnetz.shape, avg_tonnetz.shape, std_tonnetz.shape)
+        features_list.append(torch.tensor(avg_tonnetz, dtype=torch.float32).view(batch_size, 1))
+        features_list.append(torch.tensor(std_tonnetz, dtype=torch.float32).view(batch_size, 1))
+
+
+        # eigth - spectral flatness, rolloff, bandwidth
+        spectral_flatness = librosa.feature.spectral_flatness(y=data)
+        avg_spectral_flatness = np.mean(spectral_flatness, axis=(1, 2))
+        std_spectral_flatness = np.std(spectral_flatness, axis=(1, 2))
+        # print("spectral flatness: ", spectral_flatness.shape, avg_spectral_flatness.shape,
+        #       std_spectral_flatness.shape)
+        features_list.append(torch.tensor(avg_spectral_flatness, dtype=torch.float32).view(batch_size, 1))
+        features_list.append(torch.tensor(std_spectral_flatness, dtype=torch.float32).view(batch_size, 1))
+
+        spectral_rolloff = librosa.feature.spectral_rolloff(y=data)
+        avg_spectral_rolloff = np.mean(spectral_rolloff, axis=(1, 2))
+        std_spectral_rolloff = np.std(spectral_rolloff, axis=(1, 2))
+        # print("spectral rolloff: ", spectral_rolloff.shape, avg_spectral_rolloff.shape,
+        #       std_spectral_rolloff.shape)
+        features_list.append(torch.tensor(avg_spectral_rolloff, dtype=torch.float32).view(batch_size, 1))
+        features_list.append(torch.tensor(std_spectral_rolloff, dtype=torch.float32).view(batch_size, 1))
+
+        spectral_bandwidth = librosa.feature.spectral_bandwidth(y=data)
+        avg_spectral_bandwidth = np.mean(spectral_bandwidth, axis=(1, 2))
+        std_spectral_bandwidth = np.std(spectral_bandwidth, axis=(1, 2))
+        # print("spectral bandwidth: ", spectral_bandwidth.shape, avg_spectral_bandwidth.shape,
+        #       std_spectral_bandwidth.shape)
+        features_list.append(torch.tensor(avg_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
+        features_list.append(torch.tensor(std_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
+
+        # ninth - log attack time
+
+
+
+
         # print("MFCC: ", mfcc.shape, zero_order_mfcc.shape, first_order_mfcc.shape, second_order_mfcc.shape)
         features_list.append(torch.tensor(zero_order_mfcc, dtype=torch.float32).view(batch_size, 13))
         features_list.append(torch.tensor(first_order_mfcc, dtype=torch.float32).view(batch_size, 13))
@@ -252,7 +300,7 @@ class ClassifierHandler:
         # load the data from the json files
 
         opti_params = OptimizationParameters()
-        music_classifier = MusicClassifier(opti_params, **{'num_features': 47})
+        music_classifier = MusicClassifier(opti_params, **{'num_features': 57})
 
         music_classifier.train(training_parameters)
         # save the model
@@ -347,7 +395,9 @@ def tmp():
 
 
 if __name__ == '__main__':
-    # ClassifierHandler.train_new_model(TrainingParameters())
+    torch.manual_seed(0)
+    np.random.seed(0)
+    ClassifierHandler.train_new_model(TrainingParameters())
     model = ClassifierHandler.get_pretrained_model()
     file_name = "parsed_data/classical/test/1.mp3"
     wav, sr = librosa.load(file_name)
