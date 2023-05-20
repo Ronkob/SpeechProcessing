@@ -32,8 +32,8 @@ class TrainingParameters:
     If you add additional values to your training configuration please add them in here with 
     default values (so run won't break when we test this).
     """
-    batch_size: int = 64
-    num_epochs: int = 100
+    batch_size: int = 32
+    num_epochs: int = 15
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -45,7 +45,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
-    learning_rate: float = 0.01
+    learning_rate: float = 0.001
 
 
 class MusicClassifier:
@@ -72,7 +72,7 @@ class MusicClassifier:
         ## features extraction
         features_list = []
         batch_size = wavs.size()[0]
-        data = wavs.numpy().squeeze()
+        data = wavs.numpy()
         # first family - crossing rate
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y=data)
         avg_zero_crossing_rate = np.mean(zero_crossing_rate, axis=(1, 2))
@@ -198,7 +198,8 @@ class MusicClassifier:
         this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor)
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
-        outputs = self.forward(wavs)
+        feats = self.exctract_feats(wavs)
+        outputs = self.forward(feats)
         _, predicted = torch.max(outputs.data, dim=1)
         return predicted
 
@@ -269,7 +270,7 @@ class ClassifierHandler:
         """
         # should load a model from model files directory. This function should return a MusicClassifier object
         # with loaded weights/other.
-        model = torch.load('model.pth')
+        model = torch.load('model_files/model.pth')
         return model
 
     @staticmethod
@@ -346,10 +347,12 @@ def tmp():
 
 
 if __name__ == '__main__':
-    ClassifierHandler.train_new_model(TrainingParameters())
+    # ClassifierHandler.train_new_model(TrainingParameters())
     model = ClassifierHandler.get_pretrained_model()
-    file_name = "ex2/Ex2/parsed_data/classical/train/1.mp3"
-    wav = torch.load(file_name)
-    outputs = model.classify(wav)
-    # assert outputs[0] == Genre.CLASSICAL
+    file_name = "parsed_data/classical/test/1.mp3"
+    wav, sr = librosa.load(file_name)
+    outputs = model.classify(torch.tensor(wav).unsqueeze(0))
+    guess = Genre(outputs.item())
+    print(guess.name)
+    assert guess == Genre.CLASSICAL
     # tmp()
