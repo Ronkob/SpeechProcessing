@@ -278,8 +278,7 @@ class MusicClassifier:
             self.test(torch.tensor(test_data['audio'].tolist(), dtype=torch.float32), test_data['label'])
 
     def test(self, test_data, test_lables):
-        features = self.exctract_feats(test_data)
-        predictions = self.classify(features)
+        predictions = self.classify(test_data)
         loss = accuracy_score(predictions, torch.tensor(test_lables.tolist()))
         print('Accuracy: {}'.format(loss))
 
@@ -331,7 +330,7 @@ class ClassifierHandler:
         df = pd.DataFrame(columns=['label', 'audio', 'sr'])
 
         # Iterate over first 50 items in the JSON data
-        for item in data:
+        for item in data[:50]:
             path = item['path']
             label = item['label']
             label = str.replace(label, '-', '_')
