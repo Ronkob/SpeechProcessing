@@ -10,7 +10,7 @@ import typing as tp
 from dataclasses import dataclass
 import numpy as np
 import torchaudio
-
+from sklearn.metrics import accuracy_score
 
 class Genre(Enum):
     """
@@ -143,7 +143,7 @@ class MusicClassifier:
         if torch.max(torch.abs(x)) == 0:
             new_x = torch.zeros(x.shape)
 
-        return torch.softmax(new_x, dim=0)
+        return torch.softmax(new_x, dim=1)
 
     def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor):
         """
@@ -190,21 +190,16 @@ class MusicClassifier:
         """
         # This function returns the weights and biases associated with this model object,
         # should return a tuple: (weights, biases)
+        return self.weights, self.biases
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
-        this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor) 
+        this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor)
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
-        # classify : this function performs inference, i.e. returns a integer label corresponding to a
-        # given waveform,
-        # see class Genre(Enum) inside the code for a label to integer mapping. This function should
-        # support batch
-        # inference, i.e. classify a torch.Tensor comprising of stacked waveforms of shape [B, 1,
-        # T ] denoting B mono
-        # (single channel) waveforms of length T . Assume the input is always of this form (shape [B, 1,
-        # T ]) where
-        # B = 1 in the single example case.
+        outputs = self.forward(wavs)
+        _, predicted = torch.max(outputs.data, dim=1)
+        return predicted
 
     def train(self, training_parameters: TrainingParameters, data=None):
 
@@ -212,8 +207,10 @@ class MusicClassifier:
         batch_size = training_parameters.batch_size
         if data is None:
             train_data = ClassifierHandler.load_wav_files(training_parameters.train_json_path)
+            test_data = ClassifierHandler.load_wav_files(training_parameters.test_json_path)
         else:
             train_data = data
+            test_data = data
 
         for epoch in range(num_epochs):
             train_data = train_data.sample(frac=1).reset_index(drop=True)
@@ -226,7 +223,18 @@ class MusicClassifier:
                 features = self.exctract_feats(data)
                 output_scores = self.forward(features)
                 loss = self.backward(features, output_scores, one_hot_labels)
-                print('Epoch: {}, Loss: {}'.format(epoch + 1, loss))
+                if i/batch_size %  == 0:
+                    print('Epoch: {}, batch: {} / {}, loss: {}'.format(epoch+1, i, len(train_data), loss))
+
+            self.test(torch.tensor(test_data['audio'].tolist(), dtype=torch.float32), test_data['label'])
+
+    def test(self, test_data, test_lables):
+        features = self.exctract_feats(test_data)
+        predictions = self.classify(features)
+        loss = accuracy_score(predictions, torch.tensor(test_lables.tolist()))
+        print('Accuracy: {}'.format(loss))
+
+
 
 
 class ClassifierHandler:
@@ -272,7 +280,7 @@ class ClassifierHandler:
         df = pd.DataFrame(columns=['label', 'audio', 'sr'])
 
         # Iterate over first 50 items in the JSON data
-        for item in data[::5]:
+        for item in data:
             path = item['path']
             label = item['label']
             label = str.replace(label, '-', '_')
