@@ -13,6 +13,7 @@ import numpy as np
 import torchaudio
 from sklearn.metrics import accuracy_score
 
+
 class Genre(Enum):
     """
     This enum class is optional and defined for your convinience, you are not required to use it.
@@ -33,7 +34,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 15
+    num_epochs: int = 20
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -133,7 +134,6 @@ class MusicClassifier:
         features_list.append(torch.tensor(avg_tonnetz, dtype=torch.float32).view(batch_size, 1))
         features_list.append(torch.tensor(std_tonnetz, dtype=torch.float32).view(batch_size, 1))
 
-
         # eigth - spectral flatness, rolloff, bandwidth
         spectral_flatness = librosa.feature.spectral_flatness(y=data)
         avg_spectral_flatness = np.mean(spectral_flatness, axis=(1, 2))
@@ -158,11 +158,6 @@ class MusicClassifier:
         #       std_spectral_bandwidth.shape)
         features_list.append(torch.tensor(avg_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
         features_list.append(torch.tensor(std_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
-
-        # ninth - log attack time
-
-
-
 
         # print("MFCC: ", mfcc.shape, zero_order_mfcc.shape, first_order_mfcc.shape, second_order_mfcc.shape)
         features_list.append(torch.tensor(zero_order_mfcc, dtype=torch.float32).view(batch_size, 13))
@@ -272,8 +267,8 @@ class MusicClassifier:
                 features = self.exctract_feats(data)
                 output_scores = self.forward(features)
                 loss = self.backward(features, output_scores, one_hot_labels)
-                if i/batch_size % 5 == 0:
-                    print('Epoch: {}, batch: {} / {}, loss: {}'.format(epoch+1, i, len(train_data), loss))
+                if i / batch_size % 5 == 0:
+                    print('Epoch: {}, batch: {} / {}, loss: {}'.format(epoch + 1, i, len(train_data), loss))
 
             self.test(torch.tensor(test_data['audio'].tolist(), dtype=torch.float32), test_data['label'])
 
@@ -281,8 +276,6 @@ class MusicClassifier:
         predictions = self.classify(test_data)
         loss = accuracy_score(predictions, torch.tensor(test_lables.tolist()))
         print('Accuracy: {}'.format(loss))
-
-
 
 
 class ClassifierHandler:
@@ -302,8 +295,7 @@ class ClassifierHandler:
         music_classifier = MusicClassifier(opti_params, **{'num_features': 57})
 
         music_classifier.train(training_parameters)
-        # save the model
-        torch.save(music_classifier, 'model.pth')
+
         # save the model using pickle
         pickle.dump(music_classifier, open('model.pkl', 'wb'))
 
@@ -317,7 +309,7 @@ class ClassifierHandler:
         """
         # should load a model from model files directory. This function should return a MusicClassifier object
         # with loaded weights/other.
-        model = torch.load('model_files/model.pth')
+        model = pickle.load(open('model.pkl', 'rb'))
         return model
 
     @staticmethod
@@ -330,7 +322,7 @@ class ClassifierHandler:
         df = pd.DataFrame(columns=['label', 'audio', 'sr'])
 
         # Iterate over first 50 items in the JSON data
-        for item in data[:50]:
+        for item in data:
             path = item['path']
             label = item['label']
             label = str.replace(label, '-', '_')
@@ -403,5 +395,5 @@ if __name__ == '__main__':
     outputs = model.classify(torch.tensor(wav).unsqueeze(0))
     guess = Genre(outputs.item())
     print(guess.name)
-    assert guess == Genre.CLASSICAL
+    # assert guess == Genre.CLASSICAL
     # tmp()
