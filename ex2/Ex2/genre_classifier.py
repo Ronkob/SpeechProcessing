@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 from abc import abstractmethod
 
 import librosa as librosa
@@ -31,7 +32,7 @@ class TrainingParameters:
     If you add additional values to your training configuration please add them in here with 
     default values (so run won't break when we test this).
     """
-    batch_size: int = 32
+    batch_size: int = 64
     num_epochs: int = 100
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
@@ -217,13 +218,12 @@ class MusicClassifier:
             audio = torch.tensor(train_data['audio'].tolist(), dtype=torch.float32)
             labels = torch.tensor(train_data['label'].tolist(), dtype=torch.int8)
             for i in range(0, len(train_data), batch_size):
-                # batch = train_data[i: i + batch_size]
                 data = audio[i: i + batch_size]
                 one_hot_labels = torch.eye(3)[labels[i:i + batch_size].to(int)]
                 features = self.exctract_feats(data)
                 output_scores = self.forward(features)
                 loss = self.backward(features, output_scores, one_hot_labels)
-                if i/batch_size %  == 0:
+                if i/batch_size % 5 == 0:
                     print('Epoch: {}, batch: {} / {}, loss: {}'.format(epoch+1, i, len(train_data), loss))
 
             self.test(torch.tensor(test_data['audio'].tolist(), dtype=torch.float32), test_data['label'])
@@ -256,6 +256,8 @@ class ClassifierHandler:
         music_classifier.train(training_parameters)
         # save the model
         torch.save(music_classifier, 'model.pth')
+        # save the model using pickle
+        pickle.dump(music_classifier, open('model.pkl', 'wb'))
 
         return music_classifier
 
