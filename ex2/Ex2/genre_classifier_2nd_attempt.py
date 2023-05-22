@@ -61,8 +61,8 @@ class MusicClassifier:
         - You could use kwargs (dictionary) for any other variables you wish to pass in here.
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
-        self.weights = torch.zeros(size=(kwargs["num_features"], len(Genre)), dtype=torch.float32)
-        self.biases = torch.zeros(size=(1, len(Genre)), dtype=torch.float32)
+        self.weights = torch.randn(size=(kwargs["num_features"], len(Genre)), requires_grad=True)
+        self.bias = torch.randn(size=(1, len(Genre)), requires_grad=True)
         self.opt_params = opt_params
 
     def exctract_feats(self, wavs: torch.Tensor):
