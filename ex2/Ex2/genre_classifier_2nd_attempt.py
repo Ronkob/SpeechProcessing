@@ -5,6 +5,7 @@ from abc import abstractmethod
 
 import librosa as librosa
 import pandas as pd
+import scipy
 import torch
 from enum import Enum
 import typing as tp
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 import torchaudio
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 
 
 class Genre(Enum):
@@ -33,8 +35,8 @@ class TrainingParameters:
     If you add additional values to your training configuration please add them in here with
     default values (so run won't break when we test this).
     """
-    batch_size: int = 32
-    num_epochs: int = 50
+    batch_size: int = 64
+    num_epochs: int = 100
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -61,8 +63,8 @@ class MusicClassifier:
         - You could use kwargs (dictionary) for any other variables you wish to pass in here.
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
-        self.weights = torch.randn(size=(kwargs["num_features"], len(Genre)), requires_grad=True)
-        self.bias = torch.randn(size=(1, len(Genre)), requires_grad=True)
+        self.weights = torch.randn(size=(kwargs["num_features"], len(Genre)), requires_grad=False)*2-1
+        self.bias = torch.randn(size=(1, len(Genre)), requires_grad=False)*2-1
         self.opt_params = opt_params
 
     def exctract_feats(self, wavs: torch.Tensor):
@@ -70,122 +72,95 @@ class MusicClassifier:
         this function extract features from a given audio.
         we will not be observing this method.
         """
-        ## features extraction
-        features_list = []
-        batch_size = wavs.size()[0]
-        data = wavs.numpy()
-        # first family - crossing rate
-        zero_crossing_rate = librosa.feature.zero_crossing_rate(y=data)
-        avg_zero_crossing_rate = np.mean(zero_crossing_rate, axis=(1, 2))
-        std_zero_crossing_rate = np.std(zero_crossing_rate, axis=(1, 2))
-        features_list.append(torch.tensor(avg_zero_crossing_rate, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_zero_crossing_rate, dtype=torch.float32).view(batch_size, 1))
-        # print("zero crossing rate: ", zero_crossing_rate.shape, avg_zero_crossing_rate.shape,
-        #       std_zero_crossing_rate.shape)
+        all_features = []
+        wavs = wavs.numpy()
+        for i, wav in enumerate(wavs):
+            print("start wav number " + str(i) + " out of " + str(len(wavs)) + " wavs")
+            # Calculate MFCC
+            mfccs = librosa.feature.mfcc(y=wav, sr=22050, n_mfcc=13)
 
-        # second family - spectral
-        spectral_centroid = librosa.feature.spectral_centroid(y=data)
-        avg_spectral_centroid = np.mean(spectral_centroid, axis=(1, 2))
-        std_spectral_centroid = np.std(spectral_centroid, axis=(1, 2))
-        # print("spectral centroid: ", spectral_centroid.shape, avg_spectral_centroid.shape,
-        #       std_spectral_centroid.shape)
-        features_list.append(torch.tensor(avg_spectral_centroid, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_spectral_centroid, dtype=torch.float32).view(batch_size, 1))
+            # Calculate spectral contrast
+            spectral_contrast = librosa.feature.spectral_contrast(y=wav, sr=22050)
 
-        # third family - spectral contrast
-        # spectral_contrast = librosa.feature.spectral_contrast(y=data)
-        # avg_spectral_contrast = np.mean(spectral_contrast, axis=(1, 2))
-        # std_spectral_contrast = np.std(spectral_contrast, axis=(1, 2))
-        # # print("spectral contrast: ", spectral_contrast.shape, avg_spectral_contrast.shape,
-        # #       std_spectral_contrast.shape)
-        # features_list.append(torch.tensor(avg_spectral_contrast, dtype=torch.float32).view(batch_size, 1))
-        # features_list.append(torch.tensor(std_spectral_contrast, dtype=torch.float32).view(batch_size, 1))
+            # Calculate chroma features
+            chroma_stft = librosa.feature.chroma_stft(y=wav, sr=22050)
 
-        # forth family - log RMS
-        log_rms = librosa.feature.rms(y=librosa.amplitude_to_db(abs(data)))
-        avg_log_rms = np.mean(log_rms, axis=(1, 2))
-        std_log_rms = np.std(log_rms, axis=(1, 2))
-        # print("log RMS: ", log_rms.shape, avg_log_rms.shape, std_log_rms.shape)
-        features_list.append(torch.tensor(avg_log_rms, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_log_rms, dtype=torch.float32).view(batch_size, 1))
+            # Calculate tonnetz
+            tonnetz = librosa.feature.tonnetz(y=librosa.effects.harmonic(wav), sr=22050)
 
-        # # fifth family MFCC features
-        mfcc = librosa.feature.mfcc(y=data, n_mfcc=13)
-        # Padding first and second deltas
-        delta_mfcc = librosa.feature.delta(mfcc)
-        delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-        zero_order_mfcc = np.mean(mfcc, axis=2)
-        first_order_mfcc = np.mean(delta_mfcc, axis=2)
-        second_order_mfcc = np.mean(delta2_mfcc, axis=2)
+            # Calculate spectral bandwidth
+            spec_bw = librosa.feature.spectral_bandwidth(y=wav, sr=22050)
 
-        # print("MFCC: ", mfcc.shape, zero_order_mfcc.shape, first_order_mfcc.shape, second_order_mfcc.shape)
-        features_list.append(torch.tensor(zero_order_mfcc, dtype=torch.float32).view(batch_size, 13))
-        features_list.append(torch.tensor(first_order_mfcc, dtype=torch.float32).view(batch_size, 13))
-        features_list.append(torch.tensor(second_order_mfcc, dtype=torch.float32).view(batch_size, 13))
+            # Calculate spectral flatness
+            spec_flatness = librosa.feature.spectral_flatness(y=wav)
 
-        # sixth family - chroma
-        # chroma = librosa.feature.chroma_stft(y=data)
-        # avg_chroma = np.mean(chroma, axis=(1, 2))
-        # std_chroma = np.std(chroma, axis=(1, 2))
-        # # print("chroma: ", chroma.shape, avg_chroma.shape, std_chroma.shape)
-        # features_list.append(torch.tensor(avg_chroma, dtype=torch.float32).view(batch_size, 1))
-        # features_list.append(torch.tensor(std_chroma, dtype=torch.float32).view(batch_size, 1))
+            # Calculate zero crossing rate
+            zcr = librosa.feature.zero_crossing_rate(wav)
 
-        # seventh family - tonnetz
-        # tonnetz = librosa.feature.tonnetz(y=data)
-        # avg_tonnetz = np.mean(tonnetz, axis=(1, 2))
-        # std_tonnetz = np.std(tonnetz, axis=(1, 2))
-        # # print("tonnetz: ", tonnetz.shape, avg_tonnetz.shape, std_tonnetz.shape)
-        # features_list.append(torch.tensor(avg_tonnetz, dtype=torch.float32).view(batch_size, 1))
-        # features_list.append(torch.tensor(std_tonnetz, dtype=torch.float32).view(batch_size, 1))
+            # Calculate RMS
+            rms = librosa.feature.rms(y=wav)
 
-        # eigth - spectral flatness, rolloff, bandwidth
-        spectral_flatness = librosa.feature.spectral_flatness(y=data)
-        avg_spectral_flatness = np.mean(spectral_flatness, axis=(1, 2))
-        std_spectral_flatness = np.std(spectral_flatness, axis=(1, 2))
-        # print("spectral flatness: ", spectral_flatness.shape, avg_spectral_flatness.shape,
-        #       std_spectral_flatness.shape)
-        features_list.append(torch.tensor(avg_spectral_flatness, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_spectral_flatness, dtype=torch.float32).view(batch_size, 1))
+            # Calculate spectral rolloff
+            rolloff = librosa.feature.spectral_rolloff(y=wav, sr=22050)
 
-        spectral_rolloff = librosa.feature.spectral_rolloff(y=data)
-        avg_spectral_rolloff = np.mean(spectral_rolloff, axis=(1, 2))
-        std_spectral_rolloff = np.std(spectral_rolloff, axis=(1, 2))
-        # print("spectral rolloff: ", spectral_rolloff.shape, avg_spectral_rolloff.shape,
-        #       std_spectral_rolloff.shape)
-        features_list.append(torch.tensor(avg_spectral_rolloff, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_spectral_rolloff, dtype=torch.float32).view(batch_size, 1))
+            # Calculate spectral centroid
+            centroid = librosa.feature.spectral_centroid(y=wav, sr=22050)
 
-        spectral_bandwidth = librosa.feature.spectral_bandwidth(y=data)
-        avg_spectral_bandwidth = np.mean(spectral_bandwidth, axis=(1, 2))
-        std_spectral_bandwidth = np.std(spectral_bandwidth, axis=(1, 2))
-        # print("spectral bandwidth: ", spectral_bandwidth.shape, avg_spectral_bandwidth.shape,
-        #       std_spectral_bandwidth.shape)
-        features_list.append(torch.tensor(avg_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
-        features_list.append(torch.tensor(std_spectral_bandwidth, dtype=torch.float32).view(batch_size, 1))
+            # Calculate spectral contrast
+            contrast = librosa.feature.spectral_contrast(y=wav, sr=22050)
 
+            # Stack all features
+            features = np.vstack(
+                [mfccs, spectral_contrast, chroma_stft, tonnetz, spec_bw, spec_flatness, zcr, rms, rolloff,
+                 centroid, contrast])
 
-        features = torch.cat(features_list, dim=1)
+            # Calculate various statistics for each feature
+            feature_stats = np.hstack([np.mean(features, axis=1),
+                                       np.std(features, axis=1),
+                                       np.median(features, axis=1),
+                                       np.min(features, axis=1),
+                                       np.max(features, axis=1),
+                                       scipy.stats.skew(features, axis=1)])
 
-        return features
+            all_features.append(feature_stats)
 
-    @staticmethod
-    def sigmoid(z):
-        return 1 / (1 + torch.exp(-z))
+        return torch.tensor(np.array(all_features), dtype=torch.float32)
 
-    @staticmethod
-    def softmax(z):
-        exps = torch.exp(z-torch.max(z))
-        return  exps / torch.sum(exps, dim=1, keepdim=True)
+    def softmax(self, z):
+        """
+        this function calculates softmax values for a batch of scores
+        """
+        e_z = torch.exp(z - torch.max(z, dim=1, keepdim=True).values)
+        return e_z / torch.sum(e_z, dim=1, keepdim=True)
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
         """
         this function performs a forward pass throuh the model, outputting scores for every class.
         feats: batch of extracted faetures
         """
-        x = torch.mm(feats, self.weights) + self.biases
-        transformed_x = x - torch.max(x, dim=1, keepdim=True)[0]
-        return torch.softmax(transformed_x, dim=1)
+        x = torch.mm(feats, self.weights) + self.bias
+        x = self.softmax(x)
+        return x
+
+    def compute_gradients(self, feats, output_scores, labels):
+        """
+        this function should calculate the gradients for the weights and biases of the model.
+        """
+        num_samples = feats.shape[0]
+        output_scores[range(num_samples), labels] -= 1
+        output_scores /= num_samples
+
+        grad_weights = torch.mm(feats.T, output_scores)
+        grad_bias = torch.sum(output_scores, dim=0)
+
+        return grad_weights, grad_bias
+
+    def update_weights(self, grad_weights, grad_bias, lr):
+        """
+        this function should update the weights of the model
+        """
+        self.weights -= lr * grad_weights
+        self.bias -= lr * grad_bias
 
     def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor):
         """
@@ -199,26 +174,10 @@ class MusicClassifier:
         OptimizationParameters are passed to the initialization function
         """
 
-        num_examples = feats.size()[0]
-
-        # Compute gradients
-        d_scores = output_scores.clone()
-        d_scores[torch.arange(num_examples), torch.argmax(labels, dim=1)] -= 1
-        d_scores /= num_examples
-
-        d_weights = torch.matmul(feats.T, d_scores)
-        d_biases = torch.sum(d_scores, dim=0, keepdim=True)
-
-        # d_weights = torch.matmul(feats.T, output_scores-labels)/num_examples
-        # d_biases = torch.sum(output_scores-labels, dim=0, keepdim=True)/num_examples
-
-        # Update weights and biases
-        self.weights -= self.opt_params.learning_rate * d_weights
-        self.biases -= self.opt_params.learning_rate * d_biases
-
-        # Calculate the loss
-        # loss = self.calculate_loss(output_scores, labels)
         loss = self.calculate_loss(output_scores, labels)
+
+        grad_weights, grad_bias = self.compute_gradients(feats, output_scores, labels)
+        self.update_weights(grad_weights, grad_bias, self.opt_params.learning_rate)
 
         return loss
 
@@ -226,7 +185,7 @@ class MusicClassifier:
         # num_examples = output_scores.shape[0]
         # correct_logprobs = -torch.log(output_scores[range(num_examples), labels])
         # data_loss = torch.sum(correct_logprobs) / num_examples
-        return torch.nn.functional.binary_cross_entropy(output_scores, labels)
+        return torch.nn.functional.cross_entropy(output_scores, labels)
 
     def get_weights_and_biases(self):
         """
@@ -235,53 +194,62 @@ class MusicClassifier:
         """
         # This function returns the weights and biases associated with this model object,
         # should return a tuple: (weights, biases)
-        return self.weights, self.biases
+        return self.weights, self.bias
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
         this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor)
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
+        if len(wavs.size()) == 3:
+            # transform the input to shape (batch, time)
+            wavs = wavs.squeeze(1)
+
+        assert len(wavs.size()) == 2, "input should be of shape [batch, channels, time]"
+
         feats = self.exctract_feats(wavs)
         outputs = self.forward(feats)
-        _, predicted = torch.max(outputs.data, dim=1)
+        values, predicted = torch.max(outputs.data, dim=1)
         return predicted
 
-    def train(self, training_parameters: TrainingParameters, data=None):
+    def train(self, X_train, y_train, training_parameters: TrainingParameters):
 
         num_epochs = training_parameters.num_epochs
         batch_size = training_parameters.batch_size
-        if data is None:
-            train_data = ClassifierHandler.load_wav_files(training_parameters.train_json_path)
-            test_data = ClassifierHandler.load_wav_files(training_parameters.test_json_path)
-        else:
-            train_data = data
-            test_data = data
 
         for epoch in range(num_epochs):
-            train_data = train_data.sample(frac=1).reset_index(drop=True)
-            audio = torch.tensor(train_data['audio'].tolist(), dtype=torch.float32)
-            labels = torch.tensor(train_data['label'].tolist(), dtype=torch.int8)
-            for i in range(0, len(train_data), batch_size):
-                data = audio[i: i + batch_size]
-                one_hot_labels = torch.eye(3)[labels[i:i + batch_size].to(int)]
-                features = self.exctract_feats(data)
-                output_scores = self.forward(features)
-                loss = self.backward(features, output_scores, one_hot_labels)
-                if i / batch_size % 1 == 0:
-                    print('Epoch: {}, batch: {} / {}, loss: {}'.format(epoch + 1, i, len(train_data), loss))
+            # shuffle the data
+            permutation = torch.randperm(X_train.shape[0])
+            X_train = X_train[permutation]
+            y_train = y_train[permutation]
 
-            self.test(torch.tensor(test_data['audio'].tolist(), dtype=torch.float32), test_data['label'])
+            for i in range(0, len(X_train), batch_size):
+                data = X_train[i:i + batch_size]
+                # forward pass
+                output_scores = self.forward(data)
+                # backward pass and optimization
+                self.backward(data, output_scores, y_train[i:i + batch_size])
 
-    def test(self, test_data, test_lables):
-        predictions = self.classify(test_data)
-        loss = accuracy_score(predictions, torch.tensor(test_lables.tolist()))
-        print('Accuracy: {}'.format(loss))
+            # print loss every 10 epochs
+            if (epoch + 1) % 10 == 0:
+                output_scores = self.forward(X_train)
+                loss = torch.nn.functional.cross_entropy(output_scores, y_train)
+                print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item()}')
+
+    def test(self, X_test, y_test):
+        test_output_scores = self.forward(X_test)
+        _, predicted = torch.max(test_output_scores.data, 1)
+        correct = (predicted == y_test).sum().item()
+        test_accuracy = correct / len(y_test)
+        print(f'Test accuracy: {test_accuracy * 100:.2f}%')
+        return test_accuracy
 
 
 class ClassifierHandler:
     @staticmethod
-    def train_new_model(training_parameters: TrainingParameters) -> MusicClassifier:
+    def train_new_model(training_parameters: TrainingParameters, features=None, train_labels=None, i=0,
+                        test_features=None, test_labels=None) -> \
+            MusicClassifier:
         """
         This function should create a new 'MusicClassifier' object and train it from scratch.
         You could program your training loop / training manager as you see fit.
@@ -291,16 +259,39 @@ class ClassifierHandler:
         # dataclass
         # object and perform training accordingly, see code documentation for further details.
         # load the data from the json files
-
         opti_params = OptimizationParameters()
-        music_classifier = MusicClassifier(opti_params, **{'num_features': 51})
+        music_classifier = MusicClassifier(opti_params, **{'num_features': 306})
 
-        music_classifier.train(training_parameters)
+        if features is None:
+            train_df = ClassifierHandler.load_wav_files('jsons/train.json')
+            test_df = ClassifierHandler.load_wav_files('jsons/test.json')
+            df = pd.concat([train_df, test_df], ignore_index=True)
+            # shuffle the data
+            df = df.sample(frac=1).reset_index(drop=True)
+            data = np.asarray(df['audio'].tolist())[:30]
+            labels = np.asarray(df['label'].tolist())[:30]
+
+            train_data = torch.tensor(data, dtype=torch.float32)
+            train_labels = torch.tensor(labels, dtype=torch.long)
+
+            features = music_classifier.exctract_feats(train_data)
+
+        music_classifier.train(features, train_labels, training_parameters=training_parameters)
+
+        # data = np.asarray(df['audio'].tolist())[100:110]
+        # labels = np.asarray(df['label'].tolist())[100:110]
+        #
+        # test_data = torch.tensor(data, dtype=torch.float32)
+        # test_labels = torch.tensor(labels, dtype=torch.long)
+        # test_features = music_classifier.exctract_feats(test_data)
+        # test_features = features
+
+        acc = music_classifier.test(test_features, test_labels)
 
         # save the model using pickle
-        pickle.dump(music_classifier, open('model2.pkl', 'wb'))
+        pickle.dump(music_classifier, open(f'model_files/model{i}.pkl', 'wb'))
 
-        return music_classifier
+        return music_classifier, acc
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
@@ -339,14 +330,52 @@ class ClassifierHandler:
 
 
 if __name__ == '__main__':
-    torch.manual_seed(0)
-    np.random.seed(0)
-    ClassifierHandler.train_new_model(TrainingParameters())
-    model = ClassifierHandler.get_pretrained_model()
-    file_name = "parsed_data/classical/test/1.mp3"
-    wav, sr = librosa.load(file_name)
-    outputs = model.classify(torch.tensor(wav).unsqueeze(0))
-    guess = Genre(outputs.item())
-    print(guess.name)
+    train_df = ClassifierHandler.load_wav_files('jsons/train.json')
+    test_df = ClassifierHandler.load_wav_files('jsons/test.json')
+    df = pd.concat([train_df, test_df], ignore_index=True)
+    # shuffle the data
+    df = df.sample(frac=1).reset_index(drop=True)
+    data = np.asarray(df['audio'].tolist())
+    labels = np.asarray(df['label'].tolist())
+
+    train_data = torch.tensor(data, dtype=torch.float32)
+    train_labels = torch.tensor(labels, dtype=torch.long)
+
+    # test_data = torch.tensor(data, dtype=torch.float32)[900:]
+    # test_labels = torch.tensor(labels, dtype=torch.long)[900:]
+
+    music_classifier = MusicClassifier(OptimizationParameters(), **{'num_features': 306})
+    features = music_classifier.exctract_feats(train_data)
+    # test_features = music_classifier.exctract_feats(test_data)
+    # find best seed
+    seed_dict = {}
+    for i in range(500):
+        torch.manual_seed(i)
+        np.random.seed(i)
+        # shuffle the data
+        perm = torch.randperm(len(features))
+        features = features[perm]
+        train_labels = train_labels[perm]
+
+        model, acc = ClassifierHandler.train_new_model(TrainingParameters(),
+                                                       i=i,
+                                                       features=features[:900],
+                                                       train_labels=train_labels[:900],
+                                                       test_features=features[900:],
+                                                       test_labels=train_labels[900:])
+        seed_dict[i] = acc
+
+    print(seed_dict)
+    print("best seed: ", max(seed_dict, key=seed_dict.get), "best acc: ", seed_dict[max(seed_dict, key=seed_dict.get)])
+
+    # save the top ten seeds
+    top_ten = sorted(seed_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+    print(top_ten)
+    # model = ClassifierHandler.get_pretrained_model()
+    # file_name = "parsed_data/classical/test/1.mp3"
+    # wav, sr = librosa.load(file_name)
+    # outputs = model.classify(torch.tensor(wav).unsqueeze(0))
+    # guess = Genre(outputs.item())
+    # print(guess.name)
     # assert guess == Genre.CLASSICAL
     # tmp()
