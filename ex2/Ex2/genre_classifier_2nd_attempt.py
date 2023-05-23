@@ -14,6 +14,7 @@ import numpy as np
 import torchaudio
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 
 
 class Genre(Enum):
@@ -63,8 +64,8 @@ class MusicClassifier:
         - You could use kwargs (dictionary) for any other variables you wish to pass in here.
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
-        self.weights = torch.randn(size=(kwargs["num_features"], len(Genre)), requires_grad=False)*2-1
-        self.bias = torch.randn(size=(1, len(Genre)), requires_grad=False)*2-1
+        self.weights = torch.randn(size=(kwargs["num_features"], len(Genre)), requires_grad=False) * 2 - 1
+        self.bias = torch.randn(size=(1, len(Genre)), requires_grad=False) * 2 - 1
         self.opt_params = opt_params
 
     def exctract_feats(self, wavs: torch.Tensor):
@@ -244,6 +245,13 @@ class MusicClassifier:
         print(f'Test accuracy: {test_accuracy * 100:.2f}%')
         return test_accuracy
 
+    def eval(self, wavs, labels):
+        predicted = self.classify(wavs)
+        correct = (predicted == labels).sum().item()
+        test_accuracy = correct / len(labels)
+        print(f'Test accuracy: {test_accuracy * 100:.2f}%')
+        return test_accuracy
+
 
 class ClassifierHandler:
     @staticmethod
@@ -301,7 +309,7 @@ class ClassifierHandler:
         """
         # should load a model from model files directory. This function should return a MusicClassifier object
         # with loaded weights/other.
-        model = pickle.load(open('model.pkl', 'rb'))
+        model = pickle.load(open('model_files/model33.pkl', 'rb'))
         return model
 
     @staticmethod
@@ -341,37 +349,63 @@ if __name__ == '__main__':
     train_data = torch.tensor(data, dtype=torch.float32)
     train_labels = torch.tensor(labels, dtype=torch.long)
 
-    # test_data = torch.tensor(data, dtype=torch.float32)[900:]
-    # test_labels = torch.tensor(labels, dtype=torch.long)[900:]
-
     music_classifier = MusicClassifier(OptimizationParameters(), **{'num_features': 306})
     features = music_classifier.exctract_feats(train_data)
-    # test_features = music_classifier.exctract_feats(test_data)
+
     # find best seed
-    seed_dict = {}
-    for i in range(500):
-        torch.manual_seed(i)
-        np.random.seed(i)
-        # shuffle the data
-        perm = torch.randperm(len(features))
-        features = features[perm]
-        train_labels = train_labels[perm]
-
-        model, acc = ClassifierHandler.train_new_model(TrainingParameters(),
-                                                       i=i,
-                                                       features=features[:900],
-                                                       train_labels=train_labels[:900],
-                                                       test_features=features[900:],
-                                                       test_labels=train_labels[900:])
-        seed_dict[i] = acc
-
-    print(seed_dict)
-    print("best seed: ", max(seed_dict, key=seed_dict.get), "best acc: ", seed_dict[max(seed_dict, key=seed_dict.get)])
-
-    # save the top ten seeds
-    top_ten = sorted(seed_dict.items(), key=lambda x: x[1], reverse=True)[:10]
-    print(top_ten)
-    # model = ClassifierHandler.get_pretrained_model()
+    # seed_dict = {}
+    # for i in range(100):
+    #     torch.manual_seed(i)
+    #     np.random.seed(i)
+    #     perm = torch.randperm(len(features))
+    #     features = features[perm]
+    #     train_labels = train_labels[perm]
+    #
+    #     # 5-fold cross-validation
+    #     kf = KFold(n_splits=5, shuffle=True, random_state=i)
+    #
+    #     fold_accuracies = []
+    #
+    #     for j, (train_index, test_index) in enumerate(kf.split(features)):
+    #         # Split data into training and testing
+    #         X_train, X_test = features[train_index], features[test_index]
+    #         y_train, y_test = train_labels[train_index], train_labels[test_index]
+    #         torch.manual_seed(i)
+    #         model, acc = ClassifierHandler.train_new_model(
+    #             TrainingParameters(),
+    #             # i, j to str
+    #             i=str(i) + " , " + str(j),
+    #             features=X_train,
+    #             train_labels=y_train,
+    #             test_features=X_test,
+    #             test_labels=y_test
+    #         )
+    #
+    #         fold_accuracies.append(acc)
+    #
+    #     print(f"Fold accuracies: {fold_accuracies}")
+    #     print(f"Mean accuracy: {np.mean(fold_accuracies)}")
+    #     seed_dict[i] = np.mean(fold_accuracies)
+    #
+    # print(seed_dict)
+    # print("best seed: ", max(seed_dict, key=seed_dict.get), "best acc: ", seed_dict[max(seed_dict,
+    #                                                                                     key=seed_dict.get)])
+    #
+    model, acc = ClassifierHandler.train_new_model(
+                TrainingParameters(),
+                # i, j to str
+                i="_chosen",
+                features=features,
+                train_labels=train_labels,
+                test_features=features,
+                test_labels=train_labels
+            )
+    # # save the top ten seeds
+    # top_ten = sorted(seed_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+    # print(top_ten)
+    model2 = ClassifierHandler.get_pretrained_model()
+    model2.eval(torch.tensor(data[200:300], dtype=torch.float32),
+               torch.tensor(labels[200:300], dtype=torch.long))
     # file_name = "parsed_data/classical/test/1.mp3"
     # wav, sr = librosa.load(file_name)
     # outputs = model.classify(torch.tensor(wav).unsqueeze(0))
