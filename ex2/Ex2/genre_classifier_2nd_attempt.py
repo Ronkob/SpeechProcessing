@@ -255,8 +255,7 @@ class MusicClassifier:
 
 class ClassifierHandler:
     @staticmethod
-    def train_new_model(training_parameters: TrainingParameters, features=None, train_labels=None, i=0,
-                        test_features=None, test_labels=None) -> \
+    def train_new_model(training_parameters: TrainingParameters, txt="") -> \
             MusicClassifier:
         """
         This function should create a new 'MusicClassifier' object and train it from scratch.
@@ -270,19 +269,18 @@ class ClassifierHandler:
         opti_params = OptimizationParameters()
         music_classifier = MusicClassifier(opti_params, **{'num_features': 306})
 
-        if features is None:
-            train_df = ClassifierHandler.load_wav_files('jsons/train.json')
-            test_df = ClassifierHandler.load_wav_files('jsons/test.json')
-            df = pd.concat([train_df, test_df], ignore_index=True)
-            # shuffle the data
-            df = df.sample(frac=1).reset_index(drop=True)
-            data = np.asarray(df['audio'].tolist())[:30]
-            labels = np.asarray(df['label'].tolist())[:30]
+        train_df = ClassifierHandler.load_wav_files('jsons/train.json')
+        test_df = ClassifierHandler.load_wav_files('jsons/test.json')
+        df = pd.concat([train_df, test_df], ignore_index=True)
+        # shuffle the data
+        df = df.sample(frac=1).reset_index(drop=True)
+        data = np.asarray(df['audio'].tolist())[:30]
+        labels = np.asarray(df['label'].tolist())[:30]
 
-            train_data = torch.tensor(data, dtype=torch.float32)
-            train_labels = torch.tensor(labels, dtype=torch.long)
+        train_data = torch.tensor(data, dtype=torch.float32)
+        train_labels = torch.tensor(labels, dtype=torch.long)
 
-            features = music_classifier.exctract_feats(train_data)
+        features = music_classifier.exctract_feats(train_data)
 
         music_classifier.train(features, train_labels, training_parameters=training_parameters)
 
@@ -294,12 +292,12 @@ class ClassifierHandler:
         # test_features = music_classifier.exctract_feats(test_data)
         # test_features = features
 
-        acc = music_classifier.test(test_features, test_labels)
+        # acc = music_classifier.test(test_features, test_labels)
 
         # save the model using pickle
-        pickle.dump(music_classifier, open(f'model_files/model{i}.pkl', 'wb'))
+        pickle.dump(music_classifier, open(f'model_files/model{txt}.pkl', 'wb'))
 
-        return music_classifier, acc
+        return music_classifier
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
@@ -309,7 +307,7 @@ class ClassifierHandler:
         """
         # should load a model from model files directory. This function should return a MusicClassifier object
         # with loaded weights/other.
-        model = pickle.load(open('model_files/model33.pkl', 'rb'))
+        model = pickle.load(open('model_files/model_chosen.pkl', 'rb'))
         return model
 
     @staticmethod
