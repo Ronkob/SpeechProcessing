@@ -39,7 +39,7 @@ class ClassifierArgs:
     # we will use this to give an absolute path to the data, make sure you read the data using this argument. 
     # you may assume the train data is the same
     path_to_training_data_dir: str = os.path.join("Resources", "train_files")
-
+    pruning_window_size: int = 10
     # you may add other args here
 
 
@@ -52,6 +52,7 @@ class DigitClassifier:
         self.path_to_training_data = args.path_to_training_data_dir
         self.data, self.labels = self.load_data_repo(self.path_to_training_data)
         self.features = self.get_features(self.data)  # shape (batch, channels, time)
+        self.pruning_window_size = args.pruning_window_size
 
     @staticmethod
     def get_features(audio_batch: torch.Tensor) -> torch.Tensor:
@@ -118,7 +119,8 @@ class DigitClassifier:
         audio_files: list of audio file paths or a batch of audio files of shape [Batch, Channels, Time]
         return: list of predicted label for each batch entry
         """
-        distance_function = lambda mfcc, train_example: self.dtw_v2(mfcc, train_example)[-1, -1]
+        distance_function = lambda mfcc, train_example: \
+            self.dtw_v2(mfcc, train_example, window_size=self.pruning_window_size)[-1, -1]
         predictions = self.classify_1_nearest_neighbor(audio_files, distance_function)
 
         return predictions
@@ -343,7 +345,7 @@ def evaluate_digit_classifier():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     test_files, labels = digit_classifier.load_data_repo(
         path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
-        classes=['one'])
+        classes=['one', 'two', 'three', 'four', 'five'])
 
     output = digit_classifier.evaluate(test_files, labels)
     print(output)
@@ -402,6 +404,6 @@ def old_tries():
 
 
 if __name__ == '__main__':
-    evaluate_digit_classifier()
-    # test_digit_classifier()
+    # evaluate_digit_classifier()
+    test_digit_classifier()
     # test_dtw2()
