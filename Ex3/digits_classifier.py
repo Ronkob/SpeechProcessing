@@ -35,8 +35,7 @@ class ClassifierArgs:
     """
     # we will use this to give an absolute path to the data, make sure you read the data using this argument. 
     # you may assume the train data is the same
-    path_to_training_data_dir: str = "./Resources/train_files"
-    # path_to_training_data_dir: str = "./train_files" TODO: change this to the correct path
+    path_to_training_data_dir: str = os.path.join("Resources", "train_files")
 
     # you may add other args here
 
@@ -66,6 +65,13 @@ class DigitClassifier():
         # convert the list to a tensor
         mfcc = torch.Tensor(np.asarray(mfccs))
         return mfcc
+
+    @staticmethod
+    def load_audio_from_list(audio_files: List[str]) -> torch.Tensor:
+        audio_files = [librosa.load(file)[0] for file in audio_files]
+        audio_files = [torch.from_numpy(file) for file in audio_files]
+        audio_files = torch.stack(audio_files)
+        return audio_files
 
     def load_data(self, path_to_training_data: str = None):
         """
@@ -101,9 +107,7 @@ class DigitClassifier():
         """
         # convert the input to a list of tensors
         if isinstance(audio_files, list):
-            audio_files = [librosa.load(file)[0] for file in audio_files]
-            audio_files = [torch.from_numpy(file) for file in audio_files]
-            audio_files = torch.stack(audio_files)
+            audio_files = self.load_audio_from_list(audio_files)
 
         features = self.get_features(audio_files)
 
@@ -132,9 +136,7 @@ class DigitClassifier():
         """
         # convert the input to a list of tensors
         if isinstance(audio_files, list):
-            audio_files = [librosa.load(file)[0] for file in audio_files]
-            audio_files = [torch.from_numpy(file) for file in audio_files]
-            audio_files = torch.stack(audio_files)
+            audio_files = self.load_audio_from_list(audio_files)
 
         mfcc = self.get_features(audio_files)
 
@@ -275,12 +277,12 @@ def run_main():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     labels = []
     test_files = []
-    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
-    #     'Resources/tests_labeled/tests/one') if f.endswith('.wav')]
-    # labels = [1] * len(test_files)
-    test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'two', f) for f in os.listdir(
-        'Resources/tests_labeled/tests/two') if f.endswith('.wav')]
-    labels += [2] * (len(test_files) - len(labels))
+    test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
+        'Resources/tests_labeled/tests/one') if f.endswith('.wav')]
+    labels = [1] * len(test_files)
+    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'two', f) for f in os.listdir(
+    #     'Resources/tests_labeled/tests/two') if f.endswith('.wav')]
+    # labels += [2] * (len(test_files) - len(labels))
     # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'three', f) for f in os.listdir(
     #     'Resources/tests_labeled/tests/three') if f.endswith('.wav')]
     # labels += [3] * (len(test_files) - len(labels))
