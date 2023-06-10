@@ -47,11 +47,11 @@ class DigitClassifier():
 
     def __init__(self, args: ClassifierArgs):
         self.path_to_training_data = args.path_to_training_data_dir
-        self.data, self.labels = self.load_data()
+        self.data, self.labels = self.load_data_repo(self.path_to_training_data)
         self.features = self.get_features(self.data)  # shape (batch, channels, time)
 
     @staticmethod
-    def get_features(audio_batch):
+    def get_features(audio_batch: torch.Tensor) -> torch.Tensor:
         """
         function to calculate the mfcc for each audio file
         audio_batch: a batch of audio files
@@ -68,10 +68,30 @@ class DigitClassifier():
 
     @staticmethod
     def load_audio_from_list(audio_files: List[str]) -> torch.Tensor:
-        audio_files = [librosa.load(file)[0] for file in audio_files]
+        audio_files = [librosa.load(file, mono=True)[0] for file in audio_files]
         audio_files = [torch.from_numpy(file) for file in audio_files]
         audio_files = torch.stack(audio_files)
         return audio_files
+
+    def load_data_repo(self, path_to_repo: str = None, classes: List[str] = None):
+        if path_to_repo is None:
+            path_to_repo = self.path_to_training_data
+        if classes is None:
+            classes = ['one', 'two', 'three', 'four', 'five']
+        # load the data
+        data = []
+        labels = []
+        for i, class_ in enumerate(classes):
+            path = os.path.join(path_to_repo, class_)
+            files = [os.path.join(path, file) for file in os.listdir(path) if file.endswith('.wav')]
+            data += self.load_audio_from_list(files)
+            labels += [i + 1] * len(files)
+
+        # load the data into a tensor of size (batch, channels, time), from a list of tensors
+        audio_data = torch.stack(data)
+        # add a dimension for the channels
+        audio_data = audio_data.unsqueeze(1)
+        return audio_data, labels
 
     def load_data(self, path_to_training_data: str = None):
         """
@@ -109,11 +129,11 @@ class DigitClassifier():
         if isinstance(audio_files, list):
             audio_files = self.load_audio_from_list(audio_files)
 
-        features = self.get_features(audio_files)
+        mfccs = self.get_features(audio_files)
 
         # calculate the distance between each file and the training data
         distances = []
-        for mfcc in features:
+        for mfcc in mfccs:
             vector_distances = []
             for train_example in self.features:
                 vector_distances.append(torch.dist(mfcc, train_example))
@@ -138,14 +158,21 @@ class DigitClassifier():
         if isinstance(audio_files, list):
             audio_files = self.load_audio_from_list(audio_files)
 
+        assert len(audio_files.shape) == 3,\
+            "The input should be a batch of audio files of shape [Batch, Channels, Time]"
+
+        # make sure the input is transformed to shape [Batch, Time]
+        if len(audio_files.shape) == 3:
+            audio_files = audio_files.squeeze(1)
+
         mfcc = self.get_features(audio_files)
 
         # calculate the distance between each file and the training data
         distances = []
-        for audio_file in mfcc:
+        for mfcc in mfcc:
             vector_distances = []
             for train_example in self.features:
-                vector_distances.append(self.dtw(audio_file, train_example))
+                vector_distances.append(self.dtw(mfcc, train_example))
             distances.append(torch.Tensor(vector_distances))
 
         distances = torch.stack(distances)
@@ -171,6 +198,11 @@ class DigitClassifier():
         output = []
         for i in range(len(audio_files)):
             output.append(f'{audio_files[i]} - {euclidean_predictions[i]} - {dtw_predictions[i]}')
+
+        # save the output to a file
+        with open('output.txt', 'w') as f:
+            for line in output:
+                f.write(line + '\n')
 
         return output
 
@@ -275,23 +307,10 @@ def test_dtw():
 
 def run_main():
     digit_classifier = ClassifierHandler.get_pretrained_model()
-    labels = []
-    test_files = []
-    test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
-        'Resources/tests_labeled/tests/one') if f.endswith('.wav')]
-    labels = [1] * len(test_files)
-    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'two', f) for f in os.listdir(
-    #     'Resources/tests_labeled/tests/two') if f.endswith('.wav')]
-    # labels += [2] * (len(test_files) - len(labels))
-    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'three', f) for f in os.listdir(
-    #     'Resources/tests_labeled/tests/three') if f.endswith('.wav')]
-    # labels += [3] * (len(test_files) - len(labels))
-    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'four', f) for f in os.listdir(
-    #     'Resources/tests_labeled/tests/four') if f.endswith('.wav')]
-    # labels += [4] * (len(test_files) - len(labels))
-    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'five', f) for f in os.listdir(
-    #     'Resources/tests_labeled/tests/five') if f.endswith('.wav')]
-    # labels += [5] * (len(test_files) - len(labels))
+    test_files, labels = digit_classifier.load_data_repo(
+        path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
+        classes=['one', 'two'])
+
     output = digit_classifier.evaluate(test_files, labels)
     print(output)
 
