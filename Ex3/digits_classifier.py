@@ -9,6 +9,7 @@ import typing as tp
 from dataclasses import dataclass
 
 from librosa.sequence import dtw
+from matplotlib import pyplot as plt
 
 
 # a decorator to measure the time of a function
@@ -42,7 +43,7 @@ class ClassifierArgs:
     # you may add other args here
 
 
-class DigitClassifier():
+class DigitClassifier:
     """
     You should Implement your classifier object here
     """
@@ -70,10 +71,15 @@ class DigitClassifier():
 
     @staticmethod
     def load_audio_from_list(audio_files: List[str]) -> torch.Tensor:
+        """
+        function to load a list of audio files
+        audio_files: list of audio file paths
+        return: Tensor of audio files of shape [Batch, Channels, Time]
+        """
         audio_files = [librosa.load(file, mono=True)[0] for file in audio_files]
         audio_files = [torch.from_numpy(file) for file in audio_files]
         audio_files = torch.stack(audio_files)
-        return audio_files
+        return audio_files.unsqueeze(1)
 
     def load_data_repo(self, path_to_repo: str = None, classes: List[str] = None):
         if path_to_repo is None:
@@ -92,35 +98,10 @@ class DigitClassifier():
         # load the data into a tensor of size (batch, channels, time), from a list of tensors
         audio_data = torch.stack(data)
         # add a dimension for the channels
-        audio_data = audio_data.unsqueeze(1)
-        return audio_data, labels
-
-    def load_data(self, path_to_training_data: str = None):
-        """
-        function to load the training data
-        """
-        if path_to_training_data is None:
-            path_to_training_data = self.path_to_training_data
-        # load the data
-        data = []
-        classes = ['one', 'two', 'three', 'four', 'five']
-        for i, class_ in enumerate(classes):
-            path = os.path.join(path_to_training_data, class_)
-            # path = self.path_to_training_data + '/' + class_
-            # only .wav files
-            files = [file for file in os.listdir(path) if file.endswith('.wav')]
-            # files = os.listdir(path)
-            for file in files:
-                data.append((librosa.load(path + '/' + file)[0], i + 1))
-
-        # load the data into a tensor of size (batch, channels, time)
-        audio_data = torch.Tensor(np.asarray([data[i][0] for i in range(len(data))]))
-        labels = torch.Tensor(np.asarray([data[i][1] for i in range(len(data))]))
-
         return audio_data, labels
 
     @abstractmethod
-    def classify_using_eucledian_distance(self, audio_files: tp.Union[tp.List[str], torch.Tensor]) -> tp.List[
+    def classify_using_euclidean_distance(self, audio_files: tp.Union[tp.List[str], torch.Tensor]) -> tp.List[
         int]:
         """
         function to classify a given audio using auclidean distance
@@ -137,7 +118,7 @@ class DigitClassifier():
         audio_files: list of audio file paths or a batch of audio files of shape [Batch, Channels, Time]
         return: list of predicted label for each batch entry
         """
-        distance_function = lambda mfcc, train_example: self.dtw(mfcc, train_example)[-1, -1]
+        distance_function = lambda mfcc, train_example: self.dtw_v2(mfcc, train_example)[-1, -1]
         predictions = self.classify_1_nearest_neighbor(audio_files, distance_function)
 
         return predictions
@@ -186,7 +167,7 @@ class DigitClassifier():
         - {predict using DTW distance}'
         Note: filename should not include parent path, but only the file name itself.
         """
-        euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
+        euclidean_predictions = self.classify_using_euclidean_distance(audio_files)
         dtw_predictions = self.classify_using_DTW_distance(audio_files)
 
         output = []
@@ -209,7 +190,7 @@ class DigitClassifier():
         print('evaluating using librosa DTW distance...')
         librosa_dtw_predictions = self.classify_using_librosa_DTW_distance(audio_files)
         print('evaluating using euclidean distance...')
-        euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
+        euclidean_predictions = self.classify_using_euclidean_distance(audio_files)
 
         # calculate the accuracy of the model
         dtw_accuracy = self.get_accuracy(dtw_predictions, labels)
@@ -236,6 +217,37 @@ class DigitClassifier():
         return correct / len(predictions)
 
     @staticmethod
+    def dtw_v2(t1, t2, dist=torch.dist, window_size=20):
+        """
+        :param t1: tensor of shape (channels, features, time1)
+        :param t2: tensor of shape (channels, features, time2)
+        :param window_size: the size of the window to use in the DTW algorithm
+        :param dist: a function that calculates distance between two tensors
+        :return: the Dynamic Time Warping distance between t1 and t2
+        """
+
+        # Get tensors shapes
+        channels, features, time1 = t1.size()
+        _, _, time2 = t2.size()
+
+        # Initialize the cost matrix
+        dtw_matrix = torch.full((time1 + 1, time2 + 1), float('inf'))
+
+        # Set the starting point to 0
+        dtw_matrix[0, 0] = 0
+
+        # Calculate the cost for each possible alignment
+        for i in range(1, time1 + 1):
+            for j in range(max(1, i - window_size), min(time2 + 1, i + window_size)):
+                cost = dist(t1[:, :, i - 1], t2[:, :, j - 1])
+                # Update the cost matrix
+                dtw_matrix[i, j] = cost + min(dtw_matrix[i - 1, j], dtw_matrix[i, j - 1],
+                                              dtw_matrix[i - 1, j - 1])
+
+        # Return the DTW distance
+        return dtw_matrix
+
+    @staticmethod
     def dtw(seq1: torch.Tensor, seq2: torch.Tensor) -> torch.Tensor:
         """
         function to calculate the DTW distance between two sequences
@@ -244,34 +256,37 @@ class DigitClassifier():
         """
 
         # unsqueeze the channels dimension
-        seq1 = seq1.unsqueeze(0)
-        seq2 = seq2.unsqueeze(0)
+        seq1 = seq1.squeeze(0)
+        seq2 = seq2.squeeze(0)
 
-        # fill
-        N = len(seq1[0])
-        cost = np.zeros((N, N))
+        N, M = len(seq1[0])+1, len(seq2[0])+1
+
+        # Calculate cost matrix
+        cost = torch.zeros((N, M))
         for row in range(N):
-            for j in range(N):
+            for col in range(M):
                 x_frame = seq1[:, row]
-                y_frame = seq2[:, row]
-                cost[row, j] = torch.norm(x_frame - y_frame)
-        # extract
-        accumulated = np.zeros((N, N))
+                y_frame = seq2[:, col]
+                cost[row, col] = torch.norm(x_frame - y_frame)
+
+        # Initialize accumulated cost matrix
+        accumulated = torch.full((N, M), float('inf'))
         accumulated[0, 0] = cost[0, 0]
-        # first row
-        for col in range(1, N):
-            accumulated[0, col] = cost[0, col] + accumulated[0, col - 1]
-        # first col
-        for row in range(1, N):
-            accumulated[row, 0] = cost[row, 0] + accumulated[row - 1, 0]
-        # rest
-        for row in range(1, N):
-            for col in range(1, N):
-                accumulated[row, col] = cost[row, col] + min(accumulated[row - 1, col],
-                                                             accumulated[row, col - 1],
-                                                             accumulated[row - 1, col - 1])
-        accumulated = torch.Tensor(accumulated)
-        return accumulated
+
+        # Calculate accumulated cost matrix
+        for row in range(N):
+            for col in range(M):
+                if row > 0:
+                    accumulated[row, col] = min(accumulated[row, col],
+                                                accumulated[row - 1, col] + cost[row, col])
+                if col > 0:
+                    accumulated[row, col] = min(accumulated[row, col],
+                                                accumulated[row, col - 1] + cost[row, col])
+                if row > 0 and col > 0:
+                    accumulated[row, col] = min(accumulated[row, col],
+                                                accumulated[row - 1, col - 1] + cost[row, col])
+
+        return accumulated  # Return the final accumulated cost (DTW distance)
 
 
 class ClassifierHandler:
@@ -309,13 +324,36 @@ def test_dtw():
     assert accumulated[-1, -1] == 25
 
 
-def run_main():
+def test_dtw2():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     test_files, labels = digit_classifier.load_data_repo(
         path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
         classes=['one', 'two', 'three', 'four', 'five'])
 
+    # plot the result of the DTW distance for the first file and the first example of each class
+    for i in range(5):
+        cost = digit_classifier.dtw_v2(digit_classifier.get_features(test_files[0]),
+                                digit_classifier.get_features(test_files[i]))
+        plt.imshow(cost, origin='lower')
+        plt.title(f'cost matrix between {labels[0]} and {labels[i]}')
+        plt.show()
+
+
+def evaluate_digit_classifier():
+    digit_classifier = ClassifierHandler.get_pretrained_model()
+    test_files, labels = digit_classifier.load_data_repo(
+        path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
+        classes=['one'])
+
     output = digit_classifier.evaluate(test_files, labels)
+    print(output)
+
+
+def test_digit_classifier():
+    digit_classifier = ClassifierHandler.get_pretrained_model()
+    test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('Resources/test_files') if
+                  f.endswith('.wav')]
+    output = digit_classifier.classify(test_files)
     print(output)
 
 
@@ -364,4 +402,6 @@ def old_tries():
 
 
 if __name__ == '__main__':
-    run_main()
+    evaluate_digit_classifier()
+    # test_digit_classifier()
+    # test_dtw2()
