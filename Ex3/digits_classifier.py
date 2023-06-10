@@ -39,7 +39,7 @@ class ClassifierArgs:
     # we will use this to give an absolute path to the data, make sure you read the data using this argument. 
     # you may assume the train data is the same
     path_to_training_data_dir: str = os.path.join("Resources", "train_files")
-    pruning_window_size: int = 10
+    pruning_window_size: int = 40
     # you may add other args here
 
 
@@ -174,7 +174,9 @@ class DigitClassifier:
 
         output = []
         for i in range(len(audio_files)):
-            output.append(f'{audio_files[i]} - {euclidean_predictions[i]} - {dtw_predictions[i]}')
+            output.append(f''
+                          f'{os.path.split(audio_files[i])[1]} - {euclidean_predictions[i]} -'
+                          f' {dtw_predictions[i]}')
 
         # save the output to a file
         with open('output.txt', 'w') as f:
