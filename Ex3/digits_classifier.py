@@ -1,11 +1,27 @@
 import os
 from abc import abstractmethod
-
+from typing import List, Tuple
+import time
 import librosa
 import numpy as np
 import torch
 import typing as tp
 from dataclasses import dataclass
+
+
+# a decorator to measure the time of a function
+def measure_time(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        ret = func(*args, **kwargs)
+        end_time = time.time()
+        # prints the time in minutes and seconds and to the 3rd digit after the dot
+        print("Execution time: ", round((end_time - start_time) / 60, 0), " minutes and ",
+              round((end_time - start_time) % 60, 3), " seconds")
+
+        return ret
+
+    return wrapper  # returns the decorated function
 
 
 @dataclass
@@ -35,7 +51,8 @@ class DigitClassifier():
         self.data, self.labels = self.load_data()
         self.features = self.get_features(self.data)  # shape (batch, channels, time)
 
-    def get_features(self, audio_batch):
+    @staticmethod
+    def get_features(audio_batch):
         """
         function to calculate the mfcc for each audio file
         audio_batch: a batch of audio files
@@ -46,27 +63,27 @@ class DigitClassifier():
         for i in range(len(audio_batch)):
             mfccs.append(librosa.feature.mfcc(y=audio_batch[i].numpy()))
 
-        # mfccs_standardized = (mfccs - np.mean(mfccs, axis=1, keepdims=True)) / np.std(mfccs, axis=1,
-        #                                                                               keepdims=True)
-
+        # convert the list to a tensor
         mfcc = torch.Tensor(np.asarray(mfccs))
-
         return mfcc
 
-    def load_data(self):
+    def load_data(self, path_to_training_data: str = None):
         """
         function to load the training data
         """
+        if path_to_training_data is None:
+            path_to_training_data = self.path_to_training_data
         # load the data
         data = []
         classes = ['one', 'two', 'three', 'four', 'five']
         for i, class_ in enumerate(classes):
-            path = self.path_to_training_data + '/' + class_
+            path = os.path.join(path_to_training_data, class_)
+            # path = self.path_to_training_data + '/' + class_
             # only .wav files
             files = [file for file in os.listdir(path) if file.endswith('.wav')]
             # files = os.listdir(path)
             for file in files:
-                data.append((librosa.util.normalize(librosa.load(path + '/' + file)[0]), i + 1))
+                data.append((librosa.load(path + '/' + file)[0], i + 1))
 
         # load the data into a tensor of size (batch, channels, time)
         audio_data = torch.Tensor(np.asarray([data[i][0] for i in range(len(data))]))
@@ -79,12 +96,12 @@ class DigitClassifier():
         int]:
         """
         function to classify a given audio using auclidean distance
-        audio_files: list of audio file paths or a a batch of audio files of shape [Batch, Channels, Time]
+        audio_files: list of audio file paths or a batch of audio files of shape [Batch, Channels, Time]
         return: list of predicted label for each batch entry
         """
         # convert the input to a list of tensors
         if isinstance(audio_files, list):
-            audio_files = [librosa.util.normalize(librosa.load(file)[0]) for file in audio_files]
+            audio_files = [librosa.load(file)[0] for file in audio_files]
             audio_files = [torch.from_numpy(file) for file in audio_files]
             audio_files = torch.stack(audio_files)
 
@@ -115,7 +132,7 @@ class DigitClassifier():
         """
         # convert the input to a list of tensors
         if isinstance(audio_files, list):
-            audio_files = [librosa.util.normalize(librosa.load(file)[0]) for file in audio_files]
+            audio_files = [librosa.load(file)[0] for file in audio_files]
             audio_files = [torch.from_numpy(file) for file in audio_files]
             audio_files = torch.stack(audio_files)
 
@@ -147,19 +164,28 @@ class DigitClassifier():
         Note: filename should not include parent path, but only the file name itself.
         """
         euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
-        print("euclidean_predictions: ")
         dtw_predictions = self.classify_using_DTW_distance(audio_files)
-        print("dtw_predictions: ")
 
         output = []
         for i in range(len(audio_files)):
             output.append(f'{audio_files[i]} - {euclidean_predictions[i]} - {dtw_predictions[i]}')
 
-        print("Eucledian accuracy: "
-              , self.get_accuracy(euclidean_predictions, torch.ones(len(euclidean_predictions)).long()))
-        print("DTW accuracy: "
-                , self.get_accuracy(dtw_predictions, torch.ones(len(dtw_predictions)).long()))
         return output
+
+    @abstractmethod
+    @measure_time
+    def evaluate(self, audio_files: tp.List[str], labels) -> tuple:
+        print('Evaluating the model...')
+        print('evaluating using euclidean distance...')
+        euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
+        print('evaluating using DTW distance...')
+        dtw_predictions = self.classify_using_DTW_distance(audio_files)
+
+        # calculate the accuracy of the model
+        dtw_accuracy = self.get_accuracy(dtw_predictions, labels)
+        euclidean_accuracy = self.get_accuracy(euclidean_predictions, labels)
+
+        return dtw_accuracy, euclidean_accuracy
 
     # a function that gets a list of predictions, and a list of labels and returns the accuracy
     @staticmethod
@@ -176,7 +202,9 @@ class DigitClassifier():
                 correct += 1
 
         return correct / len(predictions)
-    def dtw(self, seq1, seq2):
+
+    @staticmethod
+    def dtw(seq1, seq2):
         """
         This function should return the DTW distance between the two sequences
         x: torch.tensor [13, 520]. this is the mfcc
@@ -216,7 +244,8 @@ class ClassifierHandler:
         This function should load a pretrained / tuned 'DigitClassifier' object.
         We will use this object to evaluate your classifications
         """
-        raise NotImplementedError("function is not implemented")
+        # fill
+        return DigitClassifier(ClassifierArgs())
 
 
 # test dtw on small matrix:
@@ -242,39 +271,62 @@ def test_dtw():
     assert accumulated[-1, -1] == 25
 
 
-if __name__ == '__main__':
-    # # load 2 files of the same digit
-    # x, sr = librosa.load('Resources/train_files/five/6ceeb9aa_nohash_0.wav')
-    # y, sr = librosa.load('Resources/train_files/five/9ff1b8b6_nohash_0.wav')
-    # # normalize to same volume
-    # x = librosa.util.normalize(x)
-    # y = librosa.util.normalize(y)
-    #
-    # # mfcc
-    # x_mfcc = librosa.feature.mfcc(y=x, sr=sr, n_mfcc=13)
-    # y_mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    # # dtw
-    # same_digits_dtw_res = dtw(torch.Tensor(x_mfcc), torch.Tensor(y_mfcc))
-    # # eucledian
-    # same_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(y_mfcc))
-    # # load 2 files of different digits
-    # z, sr = librosa.load('Resources/train_files/four/ad63d93c_nohash_0.wav')
-    # z = librosa.util.normalize(z)
-    #
-    # # mfcc
-    # z_mfcc = librosa.feature.mfcc(y=z, sr=sr, n_mfcc=13)
-    # # dtw
-    # different_digits_dtw_res = dtw(torch.Tensor(x_mfcc), torch.Tensor(z_mfcc))
-    # # eucledian
-    # different_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(z_mfcc))
-    # # compare
-    # assert same_digits_dtw_res < different_digits_dtw_res
+def run_main():
+    digit_classifier = ClassifierHandler.get_pretrained_model()
+    labels = []
+    test_files = []
+    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
+    #     'Resources/tests_labeled/tests/one') if f.endswith('.wav')]
+    # labels = [1] * len(test_files)
+    test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'two', f) for f in os.listdir(
+        'Resources/tests_labeled/tests/two') if f.endswith('.wav')]
+    labels += [2] * (len(test_files) - len(labels))
+    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'three', f) for f in os.listdir(
+    #     'Resources/tests_labeled/tests/three') if f.endswith('.wav')]
+    # labels += [3] * (len(test_files) - len(labels))
+    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'four', f) for f in os.listdir(
+    #     'Resources/tests_labeled/tests/four') if f.endswith('.wav')]
+    # labels += [4] * (len(test_files) - len(labels))
+    # test_files += [os.path.join('Resources', 'tests_labeled', 'tests', 'five', f) for f in os.listdir(
+    #     'Resources/tests_labeled/tests/five') if f.endswith('.wav')]
+    # labels += [5] * (len(test_files) - len(labels))
+    output = digit_classifier.evaluate(test_files, labels)
+    print(output)
+
+
+def old_tries():
+    # load 2 files of the same digit
+    x, sr = librosa.load('Resources/train_files/five/6ceeb9aa_nohash_0.wav')
+    y, sr = librosa.load('Resources/train_files/five/9ff1b8b6_nohash_0.wav')
+    # normalize to same volume
+    x = librosa.util.normalize(x)
+    y = librosa.util.normalize(y)
+
+    # mfcc
+    x_mfcc = librosa.feature.mfcc(y=x, sr=sr, n_mfcc=13)
+    y_mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    # dtw
+    same_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(y_mfcc))
+    # eucledian
+    same_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(y_mfcc))
+    # load 2 files of different digits
+    z, sr = librosa.load('Resources/train_files/four/ad63d93c_nohash_0.wav')
+    z = librosa.util.normalize(z)
+
+    # mfcc
+    z_mfcc = librosa.feature.mfcc(y=z, sr=sr, n_mfcc=13)
+    # dtw
+    different_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(z_mfcc))
+    # eucledian
+    different_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(z_mfcc))
+    # compare
+    assert same_digits_dtw_res < different_digits_dtw_res
 
     digit_classifier = DigitClassifier(ClassifierArgs())
     # get a list of all filenames in the test directory
-    # test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('Resources/test_files')[
-    # :10]
-    #               if f.endswith('.wav')]
+    test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('Resources/test_files')[
+                                                                      :10]
+                  if f.endswith('.wav')]
     test_files = [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
         'Resources/tests_labeled/tests/one')
                   if f.endswith('.wav')]
@@ -284,3 +336,7 @@ if __name__ == '__main__':
 
     # print predictions
     print('\n'.join(predictions))
+
+
+if __name__ == '__main__':
+    run_main()
