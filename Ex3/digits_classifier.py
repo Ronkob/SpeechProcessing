@@ -8,6 +8,8 @@ import torch
 import typing as tp
 from dataclasses import dataclass
 
+from librosa.sequence import dtw
+
 
 # a decorator to measure the time of a function
 def measure_time(func):
@@ -125,26 +127,7 @@ class DigitClassifier():
         audio_files: list of audio file paths or a batch of audio files of shape [Batch, Channels, Time]
         return: list of predicted label for each batch entry
         """
-        # convert the input to a list of tensors
-        if isinstance(audio_files, list):
-            audio_files = self.load_audio_from_list(audio_files)
-
-        mfccs = self.get_features(audio_files)
-
-        # calculate the distance between each file and the training data
-        distances = []
-        for mfcc in mfccs:
-            vector_distances = []
-            for train_example in self.features:
-                vector_distances.append(torch.dist(mfcc, train_example))
-            distances.append(torch.Tensor(vector_distances))
-
-        distances = torch.stack(distances)
-
-        # find the minimum distance for each file
-        arg_min_distances = torch.argmin(distances, dim=1)
-        predictions = [self.labels[i] for i in arg_min_distances]
-
+        predictions = self.classify_1_nearest_neighbor(audio_files, torch.dist)
         return predictions
 
     @abstractmethod
@@ -154,16 +137,27 @@ class DigitClassifier():
         audio_files: list of audio file paths or a batch of audio files of shape [Batch, Channels, Time]
         return: list of predicted label for each batch entry
         """
+        distance_function = lambda mfcc, train_example: self.dtw(mfcc, train_example)[-1, -1]
+        predictions = self.classify_1_nearest_neighbor(audio_files, distance_function)
+
+        return predictions
+
+    @abstractmethod
+    def classify_using_librosa_DTW_distance(self, audio_files: tp.Union[tp.List[str], torch.Tensor]) -> \
+            tp.List[int]:
+        distance_function = lambda mfcc, train_example: dtw(mfcc, train_example, backtrack=False)[-1, -1]
+        predictions = self.classify_1_nearest_neighbor(audio_files, distance_function)
+        return predictions
+
+    def classify_1_nearest_neighbor(self, audio_files: tp.Union[tp.List[str], torch.Tensor],
+                                    distance_function: callable) -> tp.List[int]:
         # convert the input to a list of tensors
+
         if isinstance(audio_files, list):
             audio_files = self.load_audio_from_list(audio_files)
 
-        assert len(audio_files.shape) == 3,\
+        assert len(audio_files.shape) == 3, \
             "The input should be a batch of audio files of shape [Batch, Channels, Time]"
-
-        # make sure the input is transformed to shape [Batch, Time]
-        if len(audio_files.shape) == 3:
-            audio_files = audio_files.squeeze(1)
 
         mfcc = self.get_features(audio_files)
 
@@ -172,7 +166,7 @@ class DigitClassifier():
         for mfcc in mfcc:
             vector_distances = []
             for train_example in self.features:
-                vector_distances.append(self.dtw(mfcc, train_example))
+                vector_distances.append(distance_function(mfcc, train_example))
             distances.append(torch.Tensor(vector_distances))
 
         distances = torch.stack(distances)
@@ -208,18 +202,22 @@ class DigitClassifier():
 
     @abstractmethod
     @measure_time
-    def evaluate(self, audio_files: tp.List[str], labels) -> tuple:
+    def evaluate(self, audio_files: tp.List[str], labels) -> dict:
         print('Evaluating the model...')
-        print('evaluating using euclidean distance...')
-        euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
         print('evaluating using DTW distance...')
         dtw_predictions = self.classify_using_DTW_distance(audio_files)
+        print('evaluating using librosa DTW distance...')
+        librosa_dtw_predictions = self.classify_using_librosa_DTW_distance(audio_files)
+        print('evaluating using euclidean distance...')
+        euclidean_predictions = self.classify_using_eucledian_distance(audio_files)
 
         # calculate the accuracy of the model
         dtw_accuracy = self.get_accuracy(dtw_predictions, labels)
         euclidean_accuracy = self.get_accuracy(euclidean_predictions, labels)
+        librosa_dtw_accuracy = self.get_accuracy(librosa_dtw_predictions, labels)
 
-        return dtw_accuracy, euclidean_accuracy
+        return {'dtw_accuracy': dtw_accuracy, 'euclidean_accuracy': euclidean_accuracy,
+                'librosa_dtw_accuracy': librosa_dtw_accuracy, }
 
     # a function that gets a list of predictions, and a list of labels and returns the accuracy
     @staticmethod
@@ -238,12 +236,17 @@ class DigitClassifier():
         return correct / len(predictions)
 
     @staticmethod
-    def dtw(seq1, seq2):
+    def dtw(seq1: torch.Tensor, seq2: torch.Tensor) -> torch.Tensor:
         """
-        This function should return the DTW distance between the two sequences
-        x: torch.tensor [13, 520]. this is the mfcc
-        y: torch.tensor [13, 520]. this is the mfcc
+        function to calculate the DTW distance between two sequences
+        seq1: first sequence of shape [Channels, Features, Time]
+        seq2: second sequence of shape [Channels, Features, Time]
         """
+
+        # unsqueeze the channels dimension
+        seq1 = seq1.unsqueeze(0)
+        seq2 = seq2.unsqueeze(0)
+
         # fill
         N = len(seq1[0])
         cost = np.zeros((N, N))
@@ -267,7 +270,8 @@ class DigitClassifier():
                 accumulated[row, col] = cost[row, col] + min(accumulated[row - 1, col],
                                                              accumulated[row, col - 1],
                                                              accumulated[row - 1, col - 1])
-        return accumulated[-1, -1]
+        accumulated = torch.Tensor(accumulated)
+        return accumulated
 
 
 class ClassifierHandler:
@@ -309,7 +313,7 @@ def run_main():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     test_files, labels = digit_classifier.load_data_repo(
         path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
-        classes=['one', 'two'])
+        classes=['one', 'two', 'three', 'four', 'five'])
 
     output = digit_classifier.evaluate(test_files, labels)
     print(output)
@@ -327,7 +331,7 @@ def old_tries():
     x_mfcc = librosa.feature.mfcc(y=x, sr=sr, n_mfcc=13)
     y_mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
     # dtw
-    same_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(y_mfcc))
+    same_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(y_mfcc))[-1, -1]
     # eucledian
     same_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(y_mfcc))
     # load 2 files of different digits
@@ -337,7 +341,7 @@ def old_tries():
     # mfcc
     z_mfcc = librosa.feature.mfcc(y=z, sr=sr, n_mfcc=13)
     # dtw
-    different_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(z_mfcc))
+    different_digits_dtw_res = DigitClassifier.dtw(torch.Tensor(x_mfcc), torch.Tensor(z_mfcc))[-1, -1]
     # eucledian
     different_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(z_mfcc))
     # compare
