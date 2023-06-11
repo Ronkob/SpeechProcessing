@@ -38,7 +38,7 @@ class ClassifierArgs:
     """
     # we will use this to give an absolute path to the data, make sure you read the data using this argument. 
     # you may assume the train data is the same
-    path_to_training_data_dir: str = os.path.join("Resources", "train_files")
+    path_to_training_data_dir: str = "./train_files"
     pruning_window_size: int = 40
     # you may add other args here
 
@@ -331,7 +331,7 @@ def test_dtw():
 def test_dtw2():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     test_files, labels = digit_classifier.load_data_repo(
-        path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
+        path_to_repo=os.path.join('tests_labeled', 'tests'),
         classes=['one', 'two', 'three', 'four', 'five'])
 
     # plot the result of the DTW distance for the first file and the first example of each class
@@ -346,8 +346,8 @@ def test_dtw2():
 def evaluate_digit_classifier():
     digit_classifier = ClassifierHandler.get_pretrained_model()
     test_files, labels = digit_classifier.load_data_repo(
-        path_to_repo=os.path.join('Resources', 'tests_labeled', 'tests'),
-        classes=['one', 'two', 'three', 'four', 'five'])
+        path_to_repo=os.path.join('tests_labeled', 'tests'),
+        classes=['one'])
 
     output = digit_classifier.evaluate(test_files, labels)
     print(output)
@@ -355,7 +355,7 @@ def evaluate_digit_classifier():
 
 def test_digit_classifier():
     digit_classifier = ClassifierHandler.get_pretrained_model()
-    test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('Resources/test_files') if
+    test_files = [os.path.join('test_files', f) for f in os.listdir('test_files') if
                   f.endswith('.wav')]
     output = digit_classifier.classify(test_files)
     print(output)
@@ -363,8 +363,8 @@ def test_digit_classifier():
 
 def old_tries():
     # load 2 files of the same digit
-    x, sr = librosa.load('Resources/train_files/five/6ceeb9aa_nohash_0.wav')
-    y, sr = librosa.load('Resources/train_files/five/9ff1b8b6_nohash_0.wav')
+    x, sr = librosa.load('train_files/five/6ceeb9aa_nohash_0.wav')
+    y, sr = librosa.load('train_files/five/9ff1b8b6_nohash_0.wav')
     # normalize to same volume
     x = librosa.util.normalize(x)
     y = librosa.util.normalize(y)
@@ -377,7 +377,7 @@ def old_tries():
     # eucledian
     same_digits_euclid_res = torch.norm(torch.Tensor(x_mfcc) - torch.Tensor(y_mfcc))
     # load 2 files of different digits
-    z, sr = librosa.load('Resources/train_files/four/ad63d93c_nohash_0.wav')
+    z, sr = librosa.load('train_files/four/ad63d93c_nohash_0.wav')
     z = librosa.util.normalize(z)
 
     # mfcc
@@ -391,11 +391,11 @@ def old_tries():
 
     digit_classifier = DigitClassifier(ClassifierArgs())
     # get a list of all filenames in the test directory
-    test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('Resources/test_files')[
+    test_files = [os.path.join('Resources', 'test_files', f) for f in os.listdir('test_files')[
                                                                       :10]
                   if f.endswith('.wav')]
     test_files = [os.path.join('Resources', 'tests_labeled', 'tests', 'one', f) for f in os.listdir(
-        'Resources/tests_labeled/tests/one')
+        'tests_labeled/tests/one')
                   if f.endswith('.wav')]
 
     # classify
@@ -406,6 +406,6 @@ def old_tries():
 
 
 if __name__ == '__main__':
-    # evaluate_digit_classifier()
-    test_digit_classifier()
+    evaluate_digit_classifier()
+    # test_digit_classifier()
     # test_dtw2()
