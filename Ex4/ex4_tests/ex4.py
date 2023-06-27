@@ -1,16 +1,18 @@
 import numpy as np
 import sys
 
+BLANK_TOKEN = 'ϵ'
+
 
 def calculate_ctc(y, target, token_string):
     T, K = y.shape
-    z = ['ϵ'] + [i for sub in [[t, 'ϵ'] for t in target] for i in sub]
+    z = [BLANK_TOKEN] + [i for sub in [[t, BLANK_TOKEN] for t in target] for i in sub]
     z_len = len(z)
     alpha = np.zeros((z_len, T))
 
     # Mapping of phonemes to its index in the matrix
     phoneme_map = {phoneme: index for index, phoneme in enumerate(token_string)}
-    phoneme_map['ϵ'] = K - 1
+    # phoneme_map[BLANK_TOKEN] = K - 1
 
     # initialization
     alpha[0, 0] = y[0, phoneme_map[z[0]]]
@@ -19,7 +21,7 @@ def calculate_ctc(y, target, token_string):
     # dynamic programming
     for t in range(1, T):
         for s in range(z_len):
-            if z[s] == 'ϵ' or z[s] == z[s - 2]:
+            if z[s] == BLANK_TOKEN or z[s] == z[s - 2]:
                 alpha[s, t] = (alpha[s - 1, t - 1] + alpha[s, t - 1]) * y[t, phoneme_map[z[s]]]
             else:
                 alpha[s, t] = (alpha[s - 2, t - 1] + alpha[s - 1, t - 1] + alpha[s, t - 1]) * y[
@@ -36,7 +38,7 @@ def print_p(p: float):
 if __name__ == "__main__":
     path_to_mat = sys.argv[1]
     labeling = sys.argv[2]
-    output_tokens = sys.argv[3] + 'ϵ'
+    output_tokens = BLANK_TOKEN + sys.argv[3]
 
     y = np.load(path_to_mat)
     p_x = calculate_ctc(y, labeling, output_tokens)
