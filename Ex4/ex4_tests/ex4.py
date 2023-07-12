@@ -3,7 +3,6 @@ import sys
 
 BLANK_TOKEN = 'ϵ'
 
-
 def calculate_ctc(y, target, token_string):
     T, K = y.shape
     z = [BLANK_TOKEN] + [i for sub in [[t, BLANK_TOKEN] for t in target] for i in sub]
