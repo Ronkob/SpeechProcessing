@@ -9,6 +9,13 @@ DATA_PATH = 'an4/an4/'
 NUM_CLASSES = 27  # adjust this according to your needs
 VOCABULARY = 'abcdefghijklmnopqrstuvwxyz '
 
+# Constants for the feature extraction
+N_MFCC = 13
+N_FFT = 400
+WIN_LENGTH = 400  # number of samples in each frame
+HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames
+N_MELS = 120  # number of Mel bands to generate
+
 
 def text_to_labels(text, vocabulary):
     """
@@ -197,7 +204,11 @@ class FeatureExtractor(torch.nn.Module):
         super(FeatureExtractor, self).__init__()
 
     def forward(self, x):
-        mfccs = torchaudio.transforms.MFCC(n_mfcc=13)(x)
+        mfccs = torchaudio.transforms.MFCC(n_mfcc=13,
+                                           melkwargs={"n_fft": N_FFT, "hop_length": HOP_LENGTH,
+                                                      "n_mels": N_MELS, "center": False,
+                                                      "win_length": WIN_LENGTH},
+                                           )(x)
         return mfccs
 
 
@@ -245,6 +256,10 @@ class AudioDatasetPhaseOne(torch.utils.data.Dataset):
         return wav, label
 
 
+def calculate_num_frames(signal_length, win_length=WIN_LENGTH, hop_length=HOP_LENGTH):
+    return 1 + (signal_length - win_length) // hop_length
+
+
 class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
     def __init__(self, wavs, txts):
         self.wavs = wavs
@@ -266,7 +281,8 @@ class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         wav = self.wavs[idx]
-        wav_length = self.wav_lengths[idx]
+        wav_length = calculate_num_frames(self.wav_lengths[idx])
+
         txt = self.txts[idx]
         txt_length = self.txt_lengths[idx]
 
@@ -281,13 +297,13 @@ if __name__ == '__main__':
     wavs, txts = load_data(mode='test', data_path=DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
-    dataset = AudioDatasetPhaseOne(wavs, txts)
+    dataset = AudioDatasetPhaseTwo(wavs, txts)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=3)  # adjust the batch size as needed
 
     model = PhaseOneModel()
     # print(model.forward(wavs[0].unsqueeze(0)))  # unsqueeze to add batch dimension
 
-    train_model_phase_one(model, dataloader)
+    train_model_phase_two(model, dataloader)
 
     output = torch.nn.functional.log_softmax(model.forward(wavs[0].unsqueeze(0)), dim=1)  # unsqueeze to add
     # print the index of the highest probability, which is the predicted label. the output is of shape (
