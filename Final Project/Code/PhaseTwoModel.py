@@ -77,7 +77,7 @@ class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
         # pad the txts with spaces to make them all the same length
         max_length = max(self.txt_lengths)
         for i, txt in enumerate(txts):
-            txts[i] = txt + 'a' * (max_length - len(txt))
+            txts[i] = txt + ' ' * (max_length - len(txt))
 
     def __len__(self):
         return len(self.wavs)

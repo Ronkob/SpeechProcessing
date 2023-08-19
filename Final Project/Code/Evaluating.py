@@ -35,12 +35,14 @@ def evaluate_model(model, dataloader):
     :param model: (torch.nn.Module) The model to evaluate
     :param dataloader: (torch.utils.data.DataLoader) The dataloader to use
     :return: (float, float) The word error rate and the character error rate
-    @brief: This function evaluates the model using the dataloader and returns the word error rate and the character
+    @brief: This function evaluates the model using the dataloader and returns the word error rate and the
+    character
             error rate
     """
     outputs = []
     labels = []
     all_labels_lengths = []
+    score_failure_count = 0
     for i, data in enumerate(dataloader, 0):
         # get the inputs; data is a list of [inputs, labels]
         (inputs, input_lengths), (labels_batch, labels_lengths) = data
@@ -57,12 +59,20 @@ def evaluate_model(model, dataloader):
 
     outputs, labels = GreedyDecoder(outputs, labels, all_labels_lengths, blank_label=28,
                                     collapse_repeated=True)
-
-    w_er = wer(outputs, labels)
-    c_er = cer(outputs, labels)
-    print('Word Error Rate: ' + str(w_er))
-    print('Character Error Rate: ' + str(c_er))
-    return w_er, c_er
+    print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
+    outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
+    try:
+        wer_score = wer(outputs, labels)
+        cer_score = cer(outputs, labels)
+    except Exception as e:
+        print("Error calculating wer and cer. Message: {}".format(e))
+        print("score failure count: {}".format(score_failure_count))
+        score_failure_count += 1
+        wer_score = 0
+        cer_score = 0
+    print('Word Error Rate: ' + str(wer_score))
+    print('Character Error Rate: ' + str(cer_score))
+    return wer_score, cer_score
 
 
 # a function that calculates the word error rate
@@ -79,5 +89,3 @@ def calculate_cer(outputs, labels):
     for i in range(len(outputs)):
         cer_sum += cer(outputs[i], labels[i])
     return cer_sum / len(outputs)
-
-

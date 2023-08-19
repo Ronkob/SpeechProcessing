@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-import PreProcessing, PhaseTwoModel, Evaluating
+import PreProcessing, PhaseOneModel, PhaseTwoModel, Evaluating
 import torch
 import wandb
 
 
-def run_phase(PhaseNumber, config=None):
+def run_phase(PhaseNumber, phase_model_class, config=None):
     architecture = PhaseNumber + 'Model'
     # turn on and off wandb logging
     # start a new wandb run to track this script
@@ -26,16 +26,17 @@ def run_phase(PhaseNumber, config=None):
     wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
-    dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
+    dataset = PhaseOneModel.AudioDatasetPhaseOne(wavs, txts)
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size)  # adjust the batch size
 
     wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
 
-    test_dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
+    test_dataset = PhaseOneModel.AudioDatasetPhaseOne(wavs, txts)
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size)
 
-    model = PhaseTwoModel.PhaseTwoModel(config)
-    PhaseTwoModel.train_model_phase_two(model, train_dataloader, test_dataloader=None, config=config)
+    model = PhaseOneModel.PhaseOneModel(config)
+    PhaseOneModel.train_model_phase_two(model, train_dataloader, test_dataloader=test_dataloader,
+                                       config=config)
     Evaluating.evaluate_model(model, test_dataloader)
 
 
@@ -49,4 +50,4 @@ class Config:
 
 if __name__ == '__main__':
     config = Config()
-    run_phase("PhaseTwo", config=config)
+    run_phase("PhaseOne", PhaseOneModel, config=config)
