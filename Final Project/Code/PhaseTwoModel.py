@@ -29,16 +29,6 @@ class PhaseTwoModel(torch.nn.Module):
         output = torch.argmax(output, dim=2).squeeze(1) # (batch, time)
         return output
 
-    def test(self):
-        # load the model
-        # load the test data
-        test_wavs, test_txts = PreProcessing.load_data('an4_test')
-        # run the model on the test data
-        test_output = self.predict(test_wavs)
-        # calculate the accuracy
-        accuracy = Evaluating.calculate_accuracy(test_output, test_txts)
-        print(f'Accuracy: {accuracy}')
-
 
 class NeuralNetAudioPhaseTwo(torch.nn.Module):
     def __init__(self):
@@ -96,13 +86,15 @@ class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
         return (wav, wav_length,), (label, txt_length)
 
 
-def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=None):
+def train_model_phase_two(model, train_dataloader, device='cpu', test_dataloader=None, config=None):
     # Define optimizer (you may want to adjust parameters according to your needs)
+    model.to(device)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     num_epochs = config.epochs
 
     first_label = train_dataloader.dataset[0][1][0]
-    first_wav = train_dataloader.dataset[0][0][0]
+    first_wav = train_dataloader.dataset[0][0][0].to(device)
     first_label_length = train_dataloader.dataset[0][1][1]
 
     for epoch in range(num_epochs):
@@ -118,6 +110,7 @@ def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=
         for i, data in enumerate(train_dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]
             (inputs, input_lengths), (labels, labels_lengths) = data
+            inputs, labels = inputs.to(device), labels.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()

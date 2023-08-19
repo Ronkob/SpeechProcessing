@@ -16,36 +16,57 @@ class PhaseThreeModel(torch.nn.Module):
     the architecture will be:
     1. CNN layers
     2. ResNet CNN - for a flatter loss surface
-    3.
+    3. Bidirectional GRU (gated recurrent units - cheaper alternative than LSTM)
+    4. MLP head
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config,
+                 n_cnn_layers, n_rnn_layers, rnn_dim, n_class, n_feats, stride=2, dropout=0.1,
+                 *args, **kwargs):
+
         super(PhaseThreeModel, self).__init__()
         self.features_extractor = PreProcessing.FeatureExtractor()
-
         self.ctc_loss = nn.CTCLoss()
+        self.cnn = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
+        # n residual cnn layers with filter size of 32
+
+        self.rescnn_layers = nn.Sequential(*[
+            ResidualCNN(32, 32, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
+            for _ in range(n_cnn_layers)
+        ])
+
+        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim)
+
+        self.birnn_layers = nn.Sequential(*[
+            BidirectionalGRU(rnn_dim=rnn_dim if i == 0 else rnn_dim * 2,
+                             hidden_size=rnn_dim, dropout=dropout, batch_first=i == 0)
+            for i in range(n_rnn_layers)
+        ])
+
+        self.classifier = nn.Sequential(
+            nn.Linear(rnn_dim * 2, rnn_dim),  # birnn returns rnn_dim*2
+            nn.GELU(),  # better activation function such as RELU for a flattened surface
+            nn.Dropout(dropout),
+            nn.Linear(rnn_dim, n_class)
+        )
 
     def forward(self, x):
         x = self.features_extractor(x)
-        # reshape the tensor to have the batch dimension first
-        x = self.neural_net(x)
+        x = self.cnn(x)
+        x = self.rescnn_layers(x)
+        sizes = x.size()
+        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # (batch, feature, time)
+        x = x.transpose(1, 2)  # (batch, time, feature)
+        x = self.fully_connected(x)
+        x = self.birnn_layers(x)
+        x = self.classifier(x)
         return x
 
     def predict(self, x):
         output = self.forward(x) # (batch, time, classes)
         output = torch.nn.functional.softmax(output, dim=2)
         # turn output to the max probability for each time step
-        output = torch.argmax(output, dim=2).squeeze(1) # (batch, time)
+        output = torch.argmax(output, dim=2).squeeze(1)  # (batch, time)
         return output
-
-    def test(self):
-        # load the model
-        # load the test data
-        test_wavs, test_txts = PreProcessing.load_data('an4_test')
-        # run the model on the test data
-        test_output = self.predict(test_wavs)
-        # calculate the accuracy
-        accuracy = Evaluating.calculate_accuracy(test_output, test_txts)
-        print(f'Accuracy: {accuracy}')
 
 
 class CNNLayerNorm(nn.Module):
@@ -103,21 +124,22 @@ class BidirectionalGRU(nn.Module):
 
     def forward(self, x):
         x = self.layer_norm(x)
-        x = F.gelu(x)
+        x = nn.functional.gelu(x)
         x, _ = self.BiGRU(x)
         x = self.dropout(x)
         return x
 
 
-
-def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=None):
+def train_model_phase_three(model, train_dataloader, device='cpu', test_dataloader=None, config=None):
     # Define optimizer (you may want to adjust parameters according to your needs)
+    model.to(device)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     num_epochs = config.epochs
 
     first_label = train_dataloader.dataset[0][1][0]
-    first_wav = train_dataloader.dataset[0][0][0]
     first_label_length = train_dataloader.dataset[0][1][1]
+    first_wav = train_dataloader.dataset[0][0][0].to(device)
 
     for epoch in range(num_epochs):
         running_loss = 0.0
@@ -126,12 +148,14 @@ def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=
         print("First label: ", PreProcessing.labels_to_text(first_label))
         model_output = model(first_wav.unsqueeze(0))
         print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_wav.unsqueeze(0))[0]))
-        print("Model Prediction: ", Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
-                                                             blank_label=28, collapse_repeated=True))
+        print("Model Prediction: ",
+              Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
+                                       blank_label=28, collapse_repeated=True))
 
         for i, data in enumerate(train_dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]
             (inputs, input_lengths), (labels, labels_lengths) = data
+            inputs, labels = inputs.to(device), labels.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -158,11 +182,17 @@ def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=
                 running_loss = 0.0
 
             if config.wandb_init:
-                wandb.log({"running_loss": running_loss, "epoch": epoch, "batch": i,
-                       "step": epoch * len(train_dataloader) + i,
-                       "loss": loss.item()})
+                wandb.log({"epoch": epoch, "batch": i,
+                           "step": epoch * len(train_dataloader) + i,
+                           "loss": loss.item()})
+
         if test_dataloader is not None:
             wer, cer = Evaluating.evaluate_model(model, test_dataloader)
             print(f'WER: {wer}, CER: {cer}')
+            wandb.log({"epoch": epoch,
+                       "running_loss": running_loss,
+                       "WER": wer,
+                       "CER": cer,
+                       })
 
     print('Finished Training')
