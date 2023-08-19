@@ -7,6 +7,7 @@ import random
 import librosa
 
 DATA_PATH = 'an4/an4/'
+# DATA_PATH = "/content/drive/MyDrive/Year3/Speach/final/an4/"
 NUM_CLASSES = 27  # adjust this according to your needs
 VOCABULARY = 'abcdefghijklmnopqrstuvwxyz '
 
