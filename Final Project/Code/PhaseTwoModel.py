@@ -5,7 +5,7 @@ import torchaudio
 import wandb
 import random
 import librosa
-import PreProcessing
+import PreProcessing, Evaluating
 
 
 class PhaseTwoModel(torch.nn.Module):
@@ -23,11 +23,21 @@ class PhaseTwoModel(torch.nn.Module):
         return x
 
     def predict(self, x):
-        output = self.forward(x)
+        output = self.forward(x) # (batch, time, classes)
         output = torch.nn.functional.softmax(output, dim=2)
         # turn output to the max probability for each time step
-        output = torch.argmax(output, dim=2).squeeze(1)
+        output = torch.argmax(output, dim=2).squeeze(1) # (batch, time)
         return output
+
+    def test(self):
+        # load the model
+        # load the test data
+        test_wavs, test_txts = PreProcessing.load_data('an4_test')
+        # run the model on the test data
+        test_output = self.predict(test_wavs)
+        # calculate the accuracy
+        accuracy = Evaluating.calculate_accuracy(test_output, test_txts)
+        print(f'Accuracy: {accuracy}')
 
 
 class NeuralNetAudioPhaseTwo(torch.nn.Module):
@@ -35,8 +45,8 @@ class NeuralNetAudioPhaseTwo(torch.nn.Module):
         super(NeuralNetAudioPhaseTwo, self).__init__()
 
         # Define your layers here
-        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=(3, 1), stride=1, padding=1)
-        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 1), stride=1, padding=1)
+        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
         self.fc = torch.nn.Linear(192, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
 
     def forward(self, x):
@@ -45,10 +55,12 @@ class NeuralNetAudioPhaseTwo(torch.nn.Module):
         x = torch.nn.functional.max_pool2d(x, (2, 1))
         x = torch.nn.functional.relu(self.conv2(x))
         x = torch.nn.functional.max_pool2d(x, (2, 1))
-        x = torch.permute(x, (3, 0, 1, 2))  # swap the time and channel dimensions
-        x = x.view(x.size(0), x.size(1), -1)  # flatten the tensor, keep the time dimension
-        x = self.fc(x)
-        return x
+        sizes = x.size() # (batch, channel, feature, time)
+        # x = torch.permute(x, (3, 0, 1, 2))  # swap the time and channel dimensions
+        x = x.view(sizes[0], sizes[1]*sizes[2], sizes[3])  # (batch, feature, time)
+        x = x.transpose(1, 2)  # (batch, time, feature)
+        x = self.fc(x) # (batch, time, num_classes)
+        return x  # (batch, time, num_classes)
 
 
 class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
@@ -89,38 +101,45 @@ def train_model_phase_two(model, dataloader, config=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     num_epochs = config.epochs
 
+    first_label = dataloader.dataset[0][1][0]
+    first_wav = dataloader.dataset[0][0][0]
+    first_label_length = dataloader.dataset[0][1][1]
+
     for epoch in range(num_epochs):
         running_loss = 0.0
+
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
-        print("First label: ", dataloader.dataset[0][1][0])
-        print("Prediction of the first sample in the dataset: ", model(dataloader.dataset[0][0][0].unsqueeze(
-            0)))
-        print("Model Predict: ", model.predict(dataloader.dataset[0][0][0].unsqueeze(0)))
+        print("First label: ", PreProcessing.labels_to_text(first_label))
+        model_output = model(first_wav.unsqueeze(0))
+        print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_wav.unsqueeze(0))[0]))
+        print("Model Prediction: ", Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
+                                                             blank_label=28, collapse_repeated=True))
+
         for i, data in enumerate(dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            (inputs, input_lengths), (labels, labels_lengths) = data  # todo padding & loading
+            (inputs, input_lengths), (labels, labels_lengths) = data
 
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs = model(inputs)  # todo should be (N, T, Letters) ?
-            outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=1)  # todo log_softmax,
-            # todo all are negative
+            outputs = model(inputs)
+            outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=2)
 
             # Calculate input and target lengths
             input_lengths = torch.tensor(input_lengths, dtype=torch.long)
             target_lengths = torch.tensor(labels_lengths, dtype=torch.long)
 
             # calculate loss
-            loss = model.ctc_loss(outputs_logsoft, labels, input_lengths, target_lengths)
+            outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
+            loss = model.ctc_loss(outputs_to_ctc, labels, input_lengths, target_lengths)
 
             loss.backward()
             optimizer.step()
 
             # print statistics
             running_loss += loss.item()
-            if i % 10 == 9:  # print every 2000 mini-batches
+            if i % 100 == 99:  # print every 2000 mini-batches
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
                 running_loss = 0.0
 
@@ -128,9 +147,5 @@ def train_model_phase_two(model, dataloader, config=None):
                 wandb.log({"running_loss": running_loss, "epoch": epoch, "batch": i,
                        "step": epoch * len(dataloader) + i,
                        "loss": loss.item()})
-
-        print("First label: ", dataloader.dataset[0][1][0])
-        print("Prediction of the first sample in the dataset: ", model(dataloader.dataset[0][0][0].unsqueeze(
-            0)))
 
     print('Finished Training')

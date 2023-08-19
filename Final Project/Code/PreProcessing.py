@@ -17,6 +17,7 @@ WIN_LENGTH = 400  # number of samples in each frame
 HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames
 N_MELS = 120  # number of Mel bands to generate
 
+
 class FeatureExtractor(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super(FeatureExtractor, self).__init__()
@@ -33,7 +34,7 @@ def calculate_num_frames(signal_length, win_length=WIN_LENGTH, hop_length=HOP_LE
     return 1 + (signal_length - win_length) // hop_length
 
 
-def text_to_labels(text, vocabulary):
+def text_to_labels(text, vocabulary=VOCABULARY):
     """
     Converts a string of text into a list of integer labels.
 
@@ -47,6 +48,22 @@ def text_to_labels(text, vocabulary):
     A list of integer labels.
     """
     return [vocabulary.index(char) + 1 for char in text if char in vocabulary]
+
+
+def labels_to_text(labels, vocabulary=VOCABULARY):
+    """
+    Converts a list of integer labels into a string.
+
+    Arguments:
+    labels -- the list of integer labels to convert
+    vocabulary -- a string of characters that are considered valid labels. The position of each character
+    in the string
+                  is its label.
+
+    Returns:
+    A string of the labels.
+    """
+    return ''.join([vocabulary[label - 1] for label in labels])
 
 
 def get_file_paths(data_path):
