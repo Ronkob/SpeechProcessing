@@ -35,16 +35,16 @@ def run_phase(PhaseNumber, config=None):
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size)
 
     model = PhaseTwoModel.PhaseTwoModel(config)
-    PhaseTwoModel.train_model_phase_two(model, train_dataloader, test_dataloader, config)
+    PhaseTwoModel.train_model_phase_two(model, train_dataloader, test_dataloader=None, config=config)
     Evaluating.evaluate_model(model, test_dataloader)
 
 
 @dataclass
 class Config:
     learning_rate: float = 0.01
-    epochs: int = 100
+    epochs: int = 300
     batch_size: int = 32
-    wandb_init: bool = False
+    wandb_init: bool = True
 
 
 if __name__ == '__main__':
