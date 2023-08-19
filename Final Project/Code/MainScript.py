@@ -27,23 +27,22 @@ def run_phase(PhaseNumber, config=None):
 
     # Now you can create a Dataset and DataLoader for your data
     dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size)  # adjust the batch size
-
-    model = PhaseTwoModel.PhaseTwoModel(config)
-
-    PhaseTwoModel.train_model_phase_two(model, dataloader, config)
+    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size)  # adjust the batch size
 
     wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
 
     test_dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size)
+
+    model = PhaseTwoModel.PhaseTwoModel(config)
+    PhaseTwoModel.train_model_phase_two(model, train_dataloader, test_dataloader, config)
     Evaluating.evaluate_model(model, test_dataloader)
 
 
 @dataclass
 class Config:
     learning_rate: float = 0.01
-    epochs: int = 50
+    epochs: int = 100
     batch_size: int = 32
     wandb_init: bool = False
 

@@ -15,7 +15,7 @@ N_MFCC = 13
 N_FFT = 400
 WIN_LENGTH = 400  # number of samples in each frame
 HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames
-N_MELS = 120  # number of Mel bands to generate
+N_MELS = 40 # number of Mel bands to generate
 
 
 class FeatureExtractor(torch.nn.Module):

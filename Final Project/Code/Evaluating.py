@@ -58,11 +58,11 @@ def evaluate_model(model, dataloader):
     outputs, labels = GreedyDecoder(outputs, labels, all_labels_lengths, blank_label=28,
                                     collapse_repeated=True)
 
-    wer = calculate_wer(outputs, labels)
-    cer = calculate_cer(outputs, labels)
-    print('Word Error Rate: ' + str(wer))
-    print('Character Error Rate: ' + str(cer))
-    return wer, cer
+    w_er = wer(outputs, labels)
+    c_er = cer(outputs, labels)
+    print('Word Error Rate: ' + str(w_er))
+    print('Character Error Rate: ' + str(c_er))
+    return w_er, c_er
 
 
 # a function that calculates the word error rate
