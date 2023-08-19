@@ -59,7 +59,7 @@ def evaluate_model(model, dataloader):
 
     outputs, labels = GreedyDecoder(outputs, labels, all_labels_lengths, blank_label=28,
                                     collapse_repeated=True)
-    print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
+    # print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
     outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
     try:
         wer_score = wer(outputs, labels)

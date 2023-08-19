@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import torch
+from torch import nn
 import torchaudio
 import wandb
 import random
@@ -8,13 +9,20 @@ import librosa
 import PreProcessing, Evaluating
 
 
-class PhaseTwoModel(torch.nn.Module):
-
+class PhaseThreeModel(torch.nn.Module):
+    """
+    this model will consist of a more complicated acoustic model, but still with no language model,
+    only ctc loss
+    the architecture will be:
+    1. CNN layers
+    2. ResNet CNN - for a flatter loss surface
+    3.
+    """
     def __init__(self, *args, **kwargs):
-        super(PhaseTwoModel, self).__init__()
-        self.features_extractor = PreProcessing.FeatureExtractorV2()
-        self.neural_net = NeuralNetAudioPhaseTwo()
-        self.ctc_loss = torch.nn.CTCLoss()
+        super(PhaseThreeModel, self).__init__()
+        self.features_extractor = PreProcessing.FeatureExtractor()
+
+        self.ctc_loss = nn.CTCLoss()
 
     def forward(self, x):
         x = self.features_extractor(x)
@@ -40,60 +48,66 @@ class PhaseTwoModel(torch.nn.Module):
         print(f'Accuracy: {accuracy}')
 
 
-class NeuralNetAudioPhaseTwo(torch.nn.Module):
-    def __init__(self):
-        super(NeuralNetAudioPhaseTwo, self).__init__()
-
-        # Define your layers here
-        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.fc = torch.nn.Linear(256, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
+class CNNLayerNorm(nn.Module):
+    """Layer normalization built for cnns input"""
+    def __init__(self, n_feats):
+        super(CNNLayerNorm, self).__init__()
+        self.layer_norm = nn.LayerNorm(n_feats)
 
     def forward(self, x):
-        # Define your forward pass here
-        x = torch.nn.functional.relu(self.conv1(x))
-        x = torch.nn.functional.max_pool2d(x, (2, 1))
-        x = torch.nn.functional.relu(self.conv2(x))
-        x = torch.nn.functional.max_pool2d(x, (2, 1))
-        sizes = x.size() # (batch, channel, feature, time)
-        # x = torch.permute(x, (3, 0, 1, 2))  # swap the time and channel dimensions
-        x = x.view(sizes[0], sizes[1]*sizes[2], sizes[3])  # (batch, feature, time)
-        x = x.transpose(1, 2)  # (batch, time, feature)
-        x = self.fc(x) # (batch, time, num_classes)
-        return x  # (batch, time, num_classes)
+        # x (batch, channel, feature, time)
+        x = x.transpose(2, 3).contiguous()  # (batch, channel, time, feature)
+        x = self.layer_norm(x)
+        return x.transpose(2, 3).contiguous()  # (batch, channel, feature, time)
 
 
-class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
-    def __init__(self, wavs, txts):
-        self.wavs = wavs
-        self.wav_lengths = [wav.shape[1] for wav in wavs]  # Store original lengths before padding
-        # pad the wavs with zeros to make them all the same length
-        max_length = max(self.wav_lengths)
-        for i, wav in enumerate(wavs):
-            wavs[i] = torch.nn.functional.pad(wav, (0, max_length - wav.shape[1]), 'constant', 0)
+class ResidualCNN(nn.Module):
+    """Residual CNN inspired by https://arxiv.org/pdf/1603.05027.pdf
+        except with layer norm instead of batch norm
+    """
 
-        self.txts = txts
-        self.txt_lengths = [len(txt) for txt in txts]  # Store original lengths before padding
-        # pad the txts with spaces to make them all the same length
-        max_length = max(self.txt_lengths)
-        for i, txt in enumerate(txts):
-            txts[i] = txt + ' ' * (max_length - len(txt))
+    def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
+        super(ResidualCNN, self).__init__()
 
-    def __len__(self):
-        return len(self.wavs)
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.layer_norm1 = CNNLayerNorm(n_feats)
+        self.layer_norm2 = CNNLayerNorm(n_feats)
 
-    def __getitem__(self, idx):
-        wav = self.wavs[idx]
-        wav_length = PreProcessing.calculate_num_frames(self.wav_lengths[idx])
+    def forward(self, x):
+        residual = x  # (batch, channel, feature, time)
+        x = self.layer_norm1(x)
+        x = nn.functional.gelu(x)
+        x = self.dropout1(x)
+        x = self.cnn1(x)
+        x = self.layer_norm2(x)
+        x = nn.functional.gelu(x)
+        x = self.dropout2(x)
+        x = self.cnn2(x)
+        x += residual
+        return x  # (batch, channel, feature, time)
 
-        txt = self.txts[idx]
-        txt_length = self.txt_lengths[idx]
 
-        # Convert the label to a sequence of integers
-        txt_lower = txt.lower()
-        label = torch.Tensor(PreProcessing.text_to_labels(txt_lower, PreProcessing.VOCABULARY)).long()
+class BidirectionalGRU(nn.Module):
 
-        return (wav, wav_length,), (label, txt_length)
+    def __init__(self, rnn_dim, hidden_size, dropout, batch_first):
+        super(BidirectionalGRU, self).__init__()
+
+        self.BiGRU = nn.GRU(
+            input_size=rnn_dim, hidden_size=hidden_size,
+            num_layers=1, batch_first=batch_first, bidirectional=True)
+        self.layer_norm = nn.LayerNorm(rnn_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.layer_norm(x)
+        x = F.gelu(x)
+        x, _ = self.BiGRU(x)
+        x = self.dropout(x)
+        return x
+
 
 
 def train_model_phase_two(model, train_dataloader, test_dataloader=None, config=None):

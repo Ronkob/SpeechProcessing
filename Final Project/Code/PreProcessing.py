@@ -17,7 +17,6 @@ WIN_LENGTH = 400  # number of samples in each frame
 HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames
 N_MELS = 40 # number of Mel bands to generate
 
-
 class FeatureExtractor(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super(FeatureExtractor, self).__init__()
@@ -28,6 +27,30 @@ class FeatureExtractor(torch.nn.Module):
                                                       "n_mels": N_MELS, "center": False,
                                                       "win_length": WIN_LENGTH})(x)
         return mfccs
+
+class FeatureExtractorV2(torch.nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(FeatureExtractorV2, self).__init__()
+
+    def forward(self, x):
+        mrfcc_dict = {"n_fft": N_FFT, "hop_length": HOP_LENGTH,
+         "n_mels": N_MELS, "center": False,
+         "win_length": WIN_LENGTH}
+        mfccs = torchaudio.transforms.MFCC(n_mfcc=13,
+                                           melkwargs=mrfcc_dict)(x)
+        # add some more features, like the delta and delta-delta
+        # mfccs_delta = torchaudio.functional.compute_deltas(mfccs)
+        # mfccs_delta_delta = torchaudio.functional.compute_deltas(mfccs_delta)
+
+        # add even more features to detect syllables, such as: the energy, the pitch, the formants, etc.
+        energy = torchaudio.transforms.MFCC(n_mfcc=1, melkwargs=mrfcc_dict)(x)
+        energy_delta = torchaudio.functional.compute_deltas(energy)
+        energy_delta_delta = torchaudio.functional.compute_deltas(energy_delta)
+
+        # concatenate the features
+        features = torch.cat((mfccs, # mfccs_delta, mfccs_delta_delta,
+                              energy, energy_delta, energy_delta_delta), dim=2)
+        return features
 
 
 def calculate_num_frames(signal_length, win_length=WIN_LENGTH, hop_length=HOP_LENGTH):
@@ -124,3 +147,36 @@ def load_data(mode, data_path):
         txts.append(label)
 
     return wavs, txts
+
+
+class AudioDataset(torch.utils.data.Dataset):
+    def __init__(self, wavs, txts):
+        self.wavs = wavs
+        self.wav_lengths = [wav.shape[1] for wav in wavs]  # Store original lengths before padding
+        # pad the wavs with zeros to make them all the same length
+        max_length = max(self.wav_lengths)
+        for i, wav in enumerate(wavs):
+            wavs[i] = torch.nn.functional.pad(wav, (0, max_length - wav.shape[1]), 'constant', 0)
+
+        self.txts = txts
+        self.txt_lengths = [len(txt) for txt in txts]  # Store original lengths before padding
+        # pad the txts with spaces to make them all the same length
+        max_length = max(self.txt_lengths)
+        for i, txt in enumerate(txts):
+            txts[i] = txt + ' ' * (max_length - len(txt))
+
+    def __len__(self):
+        return len(self.wavs)
+
+    def __getitem__(self, idx):
+        wav = self.wavs[idx]
+        wav_length = calculate_num_frames(self.wav_lengths[idx])
+
+        txt = self.txts[idx]
+        txt_length = self.txt_lengths[idx]
+
+        # Convert the label to a sequence of integers
+        txt_lower = txt.lower()
+        label = torch.Tensor(text_to_labels(txt_lower, VOCABULARY)).long()
+
+        return (wav, wav_length,), (label, txt_length)

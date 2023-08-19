@@ -26,17 +26,16 @@ def run_phase(PhaseNumber, phase_model_class, config=None):
     wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
-    dataset = PhaseOneModel.AudioDatasetPhaseOne(wavs, txts)
+    dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size)  # adjust the batch size
 
     wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
 
-    test_dataset = PhaseOneModel.AudioDatasetPhaseOne(wavs, txts)
+    test_dataset = PhaseTwoModel.AudioDatasetPhaseTwo(wavs, txts)
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size)
 
-    model = PhaseOneModel.PhaseOneModel(config)
-    PhaseOneModel.train_model_phase_two(model, train_dataloader, test_dataloader=test_dataloader,
-                                       config=config)
+    model = PhaseTwoModel.PhaseTwoModel(config)
+    PhaseTwoModel.train_model_phase_two(model, train_dataloader, test_dataloader=test_dataloader, config=config)
     Evaluating.evaluate_model(model, test_dataloader)
 
 
@@ -50,4 +49,4 @@ class Config:
 
 if __name__ == '__main__':
     config = Config()
-    run_phase("PhaseOne", PhaseOneModel, config=config)
+    run_phase("PhaseTwo", PhaseTwoModel, config=config)
