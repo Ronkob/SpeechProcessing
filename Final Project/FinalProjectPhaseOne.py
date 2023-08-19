@@ -2,7 +2,8 @@ import os
 import numpy as np
 import torch
 import torchaudio
-
+import wandb
+import random
 import librosa
 
 DATA_PATH = 'an4/an4/'
@@ -93,13 +94,34 @@ def load_data(mode, data_path):
     return wavs, txts
 
 
-class NeuralNetAudio(torch.nn.Module):
+class NeuralNetAudioPhaseOne(torch.nn.Module):
     def __init__(self):
-        super(NeuralNetAudio, self).__init__()
+        super(NeuralNetAudioPhaseOne, self).__init__()
 
         # Define your layers here
         self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.fc = torch.nn.Linear(192, NUM_CLASSES + 1)  # adjust this according to your needs
+
+    def forward(self, x):
+        # Define your forward pass here
+        x = torch.nn.functional.relu(self.conv1(x))
+        x = torch.nn.functional.max_pool2d(x, (2, 1))
+        x = torch.nn.functional.relu(self.conv2(x))
+        x = torch.nn.functional.max_pool2d(x, (2, 1))
+        x = torch.permute(x, (3, 0, 1, 2))  # swap the time and channel dimensions
+        x = x.view(x.size(0), x.size(1), -1)  # flatten the tensor, keep the time dimension
+        x = self.fc(x)
+        return x
+
+
+class NeuralNetAudioPhaseTwo(torch.nn.Module):
+    def __init__(self):
+        super(NeuralNetAudioPhaseTwo, self).__init__()
+
+        # Define your layers here
+        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=(3, 1), stride=1, padding=0)
+        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 1), stride=1, padding=0)
         self.fc = torch.nn.Linear(192, NUM_CLASSES + 1)  # adjust this according to your needs
 
     def forward(self, x):
@@ -163,7 +185,7 @@ def train_model_phase_one(model, dataloader, num_epochs=10):
     print('Finished Training')
 
 
-def train_model_phase_two(model, dataloader, num_epochs=10):
+def train_model_phase_two(model, dataloader, num_epochs=100):
     # Define optimizer (you may want to adjust parameters according to your needs)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -177,8 +199,9 @@ def train_model_phase_two(model, dataloader, num_epochs=10):
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs = model(inputs)
-            outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=1)
+            outputs = model(inputs)  # todo should be (N, T, Letters) ?
+            outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=1) # todo log_softmax, dim,
+            # todo all are negative
 
             # Calculate input and target lengths
             input_lengths = torch.tensor(input_lengths, dtype=torch.long)
@@ -209,7 +232,7 @@ class FeatureExtractor(torch.nn.Module):
                                                       "n_mels": N_MELS, "center": False,
                                                       "win_length": WIN_LENGTH},
                                            )(x)
-        return mfccs
+        return mfccs  # todo size (N, 1, 13, T)
 
 
 class PhaseOneModel(torch.nn.Module):
@@ -217,7 +240,22 @@ class PhaseOneModel(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super(PhaseOneModel, self).__init__()
         self.features_extractor = FeatureExtractor()
-        self.neural_net = NeuralNetAudio()
+        self.neural_net = NeuralNetAudioPhaseOne()
+        self.ctc_loss = torch.nn.CTCLoss()
+
+    def forward(self, x):
+        x = self.features_extractor(x)
+        # reshape the tensor to have the batch dimension first
+        x = self.neural_net(x)
+        return x
+
+
+class PhaseTwoModel(torch.nn.Module):
+
+    def __init__(self, *args, **kwargs):
+        super(PhaseTwoModel, self).__init__()
+        self.features_extractor = FeatureExtractor()
+        self.neural_net = NeuralNetAudioPhaseTwo()
         self.ctc_loss = torch.nn.CTCLoss()
 
     def forward(self, x):
@@ -294,16 +332,16 @@ class AudioDatasetPhaseTwo(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    wavs, txts = load_data(mode='test', data_path=DATA_PATH)
+    wavs, txts = load_data(mode='train', data_path=DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
     dataset = AudioDatasetPhaseTwo(wavs, txts)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=3)  # adjust the batch size as needed
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)  # adjust the batch size as needed
 
-    model = PhaseOneModel()
+    model = PhaseTwoModel()
     # print(model.forward(wavs[0].unsqueeze(0)))  # unsqueeze to add batch dimension
 
-    train_model_phase_two(model, dataloader)
+    train_model_phase_two(model, dataloader, num_epochs=100)
 
     output = torch.nn.functional.log_softmax(model.forward(wavs[0].unsqueeze(0)), dim=1)  # unsqueeze to add
     # print the index of the highest probability, which is the predicted label. the output is of shape (
