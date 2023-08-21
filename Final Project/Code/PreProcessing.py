@@ -9,7 +9,7 @@ import librosa
 DATA_PATH = 'an4/'
 # DATA_PATH = "/content/drive/MyDrive/Year3/Speach/final/an4/"
 NUM_CLASSES = 27  # adjust this according to your needs
-VOCABULARY = "abcdefghijklmnopqrstuvwxyz "
+VOCABULARY = "abcdefghijklmnopqrstuvwxyz ?"
 
 # Constants for the feature extraction
 N_MFCC = 13
@@ -176,7 +176,7 @@ def process_data(data):
                                                            "win_length": WIN_LENGTH})(wav)
         spectrograms.append(spectogram.transpose(0, 1))  # (time, channel, feature)
         labels.append(torch.tensor(text_to_labels(txt.lower())))
-        labels_lengths.append(len(labels[-1]))  # Store original lengths before padding
+        labels_lengths.append(len(txt))  # Store original lengths before padding
         input_lengths.append(spectogram.shape[1])  # Store original lengths before padding
 
     spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1).transpose(
