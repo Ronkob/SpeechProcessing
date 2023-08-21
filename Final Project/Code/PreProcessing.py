@@ -89,7 +89,7 @@ def labels_to_text(labels, vocabulary=VOCABULARY):
     Returns:
     A string of the labels.
     """
-    return ''.join([vocabulary[label - 1] for label in labels])
+    return ''.join([vocabulary[label] for label in labels])
 
 
 def get_file_paths(data_path):
