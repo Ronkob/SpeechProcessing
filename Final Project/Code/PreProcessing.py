@@ -8,8 +8,8 @@ import librosa
 
 DATA_PATH = 'an4/'
 # DATA_PATH = "/content/drive/MyDrive/Year3/Speach/final/an4/"
-NUM_CLASSES = 28  # adjust this according to your needs
-VOCABULARY = "'abcdefghijklmnopqrstuvwxyz "
+NUM_CLASSES = 27  # adjust this according to your needs
+VOCABULARY = "abcdefghijklmnopqrstuvwxyz "
 
 # Constants for the feature extraction
 N_MFCC = 13

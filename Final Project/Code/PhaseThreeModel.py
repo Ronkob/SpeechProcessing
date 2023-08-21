@@ -139,7 +139,8 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
     num_epochs = config.epochs
 
     (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
-    first_input, first_label = inputs[0].to(device), labels[0].to(device)
+    first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), labels_lengths[0]
+    print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ", first_label_length)
 
     for epoch in range(num_epochs):
         running_loss = 0.0
@@ -147,8 +148,9 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
         model_output = model(first_input.unsqueeze(0))
         print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_input.unsqueeze(0))[0]))
+
         print("Model Prediction: ",
-              Evaluating.GreedyDecoder(model_output, [first_label], [labels_lengths[0]],
+              Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
                                        blank_label=28, collapse_repeated=True))
 
         for i, data in enumerate(train_dataloader, 0):
