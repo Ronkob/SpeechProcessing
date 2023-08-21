@@ -25,7 +25,7 @@ class PhaseThreeModel(torch.nn.Module):
                  *args, **kwargs):
         super(PhaseThreeModel, self).__init__()
         self.features_extractor = PreProcessing.FeatureExtractor()
-        self.ctc_loss = nn.CTCLoss()
+        self.ctc_loss = nn.CTCLoss(blank=27)
         self.cnn = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         # n residual cnn layers with filter size of 32
 

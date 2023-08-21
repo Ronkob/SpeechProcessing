@@ -25,6 +25,7 @@ def GreedyDecoder(output, labels, label_lengths, blank_label=27, collapse_repeat
                 if collapse_repeated and j != 0 and index == args[j - 1]:
                     continue
                 decode.append(index.item())
+        print("Decode: " + str(decode))
         decodes.append(PreProcessing.labels_to_text(decode))
     return decodes, targets
 

@@ -73,7 +73,7 @@ def text_to_labels(text, vocabulary=VOCABULARY):
     Returns:
     A list of integer labels.
     """
-    return [vocabulary.index(char) for char in text if char in vocabulary]
+    return [vocabulary.index(char)+1 for char in text if char in vocabulary]
 
 
 def labels_to_text(labels, vocabulary=VOCABULARY):
@@ -89,7 +89,7 @@ def labels_to_text(labels, vocabulary=VOCABULARY):
     Returns:
     A string of the labels.
     """
-    return ''.join([vocabulary[label] for label in labels])
+    return ''.join([vocabulary[label-1] for label in labels])
 
 
 def get_file_paths(data_path):
@@ -174,10 +174,11 @@ def process_data(data):
                                                 melkwargs={"n_fft": N_FFT, "hop_length": HOP_LENGTH,
                                                            "n_mels": N_MELS, "center": False,
                                                            "win_length": WIN_LENGTH})(wav)
-        spectrograms.append(spectogram.transpose(0, 1))  # (time, channel, feature)
+        spectogram = spectogram.transpose(0, 1)  # (time, channel, feature)
+        spectrograms.append(spectogram)
         labels.append(torch.tensor(text_to_labels(txt.lower())))
         labels_lengths.append(len(txt))  # Store original lengths before padding
-        input_lengths.append(spectogram.shape[1])  # Store original lengths before padding
+        input_lengths.append(spectogram.shape[0])  # Store original lengths before padding
 
     spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1).transpose(
         2, 3)  # (batch, channel, feature, time)
