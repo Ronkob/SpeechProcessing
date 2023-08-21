@@ -3,8 +3,10 @@ from dataclasses import dataclass
 import PreProcessing, PhaseOneModel, PhaseTwoModel, PhaseThreeModel, Evaluating
 import torch
 import wandb
+from Ex3.digits_classifier import measure_time
 
 
+@measure_time
 def run_phase(PhaseNumber, phase_model_class, config=None):
     architecture = PhaseNumber + 'Model'
     # turn on and off wandb logging
@@ -52,7 +54,7 @@ def run_phase(PhaseNumber, phase_model_class, config=None):
 @dataclass
 class Config:
     learning_rate: float = 0.01
-    epochs: int = 1
+    epochs: int = 300
     batch_size: int = 4
     wandb_init: bool = False
 
