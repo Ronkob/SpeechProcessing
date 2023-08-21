@@ -3,7 +3,7 @@ import PreProcessing
 from jiwer import wer, cer
 
 
-def GreedyDecoder(output, labels, label_lengths, blank_label=28, collapse_repeated=True):
+def GreedyDecoder(output, labels, label_lengths, blank_label=27, collapse_repeated=True):
     """
     Greedy Decoder
     :param output: (torch.tensor) The output from the neural network

@@ -151,7 +151,7 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
 
         print("Model Prediction: ",
               Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
-                                       blank_label=28, collapse_repeated=True))
+                                       blank_label=27, collapse_repeated=True))
 
         for i, data in enumerate(train_dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]
