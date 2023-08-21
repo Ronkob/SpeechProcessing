@@ -19,10 +19,10 @@ class PhaseThreeModel(torch.nn.Module):
     3. Bidirectional GRU (gated recurrent units - cheaper alternative than LSTM)
     4. MLP head
     """
+
     def __init__(self, config,
                  n_cnn_layers, n_rnn_layers, rnn_dim, n_class, n_feats, stride=2, dropout=0.1,
                  *args, **kwargs):
-
         super(PhaseThreeModel, self).__init__()
         self.features_extractor = PreProcessing.FeatureExtractor()
         self.ctc_loss = nn.CTCLoss()
@@ -50,7 +50,7 @@ class PhaseThreeModel(torch.nn.Module):
         )
 
     def forward(self, x):
-        x = self.features_extractor(x)
+        # x = self.features_extractor(x)
         x = self.cnn(x)
         x = self.rescnn_layers(x)
         sizes = x.size()
@@ -62,7 +62,7 @@ class PhaseThreeModel(torch.nn.Module):
         return x
 
     def predict(self, x):
-        output = self.forward(x) # (batch, time, classes)
+        output = self.forward(x)  # (batch, time, classes)
         output = torch.nn.functional.softmax(output, dim=2)
         # turn output to the max probability for each time step
         output = torch.argmax(output, dim=2).squeeze(1)  # (batch, time)
@@ -71,6 +71,7 @@ class PhaseThreeModel(torch.nn.Module):
 
 class CNNLayerNorm(nn.Module):
     """Layer normalization built for cnns input"""
+
     def __init__(self, n_feats):
         super(CNNLayerNorm, self).__init__()
         self.layer_norm = nn.LayerNorm(n_feats)
@@ -137,19 +138,17 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     num_epochs = config.epochs
 
-    first_label = train_dataloader.dataset[0][1][0]
-    first_label_length = train_dataloader.dataset[0][1][1]
-    first_wav = train_dataloader.dataset[0][0][0].to(device)
+    (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
+    first_input, first_label = inputs[0].to(device), labels[0].to(device)
 
     for epoch in range(num_epochs):
         running_loss = 0.0
 
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
-        print("First label: ", PreProcessing.labels_to_text(first_label))
-        model_output = model(first_wav.unsqueeze(0))
-        print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_wav.unsqueeze(0))[0]))
+        model_output = model(first_input.unsqueeze(0))
+        print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_input.unsqueeze(0))[0]))
         print("Model Prediction: ",
-              Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
+              Evaluating.GreedyDecoder(model_output, [first_label], [labels_lengths[0]],
                                        blank_label=28, collapse_repeated=True))
 
         for i, data in enumerate(train_dataloader, 0):
@@ -165,8 +164,8 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
             outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=2)
 
             # Calculate input and target lengths
-            input_lengths = torch.tensor(input_lengths, dtype=torch.long)
-            target_lengths = torch.tensor(labels_lengths, dtype=torch.long)
+            input_lengths = torch.as_tensor(input_lengths, dtype=torch.long)
+            target_lengths = torch.as_tensor(labels_lengths, dtype=torch.long)
 
             # calculate loss
             outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
@@ -179,12 +178,14 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
             running_loss += loss.item()
             if i % 10 == 9:  # print every 2000 mini-batches
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
+                if config.wandb_init:
+                    wandb.log({"epoch": epoch, "batch": i,
+                               "step": epoch * len(train_dataloader) + i,
+                               "loss": loss.item(),
+                               "running_loss": running_loss})
+
                 running_loss = 0.0
 
-            if config.wandb_init:
-                wandb.log({"epoch": epoch, "batch": i,
-                           "step": epoch * len(train_dataloader) + i,
-                           "loss": loss.item()})
 
         if test_dataloader is not None:
             wer, cer = Evaluating.evaluate_model(model, test_dataloader)
@@ -194,5 +195,6 @@ def train_model_phase_three(model, train_dataloader, device='cpu', test_dataload
                        "WER": wer,
                        "CER": cer,
                        })
+
 
     print('Finished Training')
