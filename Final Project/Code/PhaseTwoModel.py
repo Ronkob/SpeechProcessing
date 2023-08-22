@@ -37,7 +37,7 @@ class NeuralNetAudioPhaseTwo(torch.nn.Module):
         # Define your layers here
         self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.fc = torch.nn.Linear(256, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
+        self.fc = torch.nn.Linear(320, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
 
     def forward(self, x):
         # Define your forward pass here
@@ -105,7 +105,7 @@ def train_model_phase_two(model, train_dataloader, device='cpu', test_dataloader
         model_output = model(first_wav.unsqueeze(0))
         print("Model Output: ", PreProcessing.labels_to_text(model.predict(first_wav.unsqueeze(0))[0]))
         print("Model Prediction: ", Evaluating.GreedyDecoder(model_output, [first_label], [first_label_length],
-                                                             blank_label=28, collapse_repeated=True))
+                                                             blank_label=27, collapse_repeated=True))
 
         for i, data in enumerate(train_dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]

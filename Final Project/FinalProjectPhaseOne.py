@@ -11,7 +11,7 @@ NUM_CLASSES = 27  # adjust this according to your needs
 VOCABULARY = 'abcdefghijklmnopqrstuvwxyz '
 
 # Constants for the feature extraction
-N_MFCC = 13
+N_MFCC = 20
 N_FFT = 400
 WIN_LENGTH = 400  # number of samples in each frame
 HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames

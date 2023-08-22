@@ -63,7 +63,7 @@ class Config:
         "n_rnn_layers": 5,
         "rnn_dim": 512,
         "n_class": 28,
-        "n_feats": 13,
+        "n_feats": PreProcessing.N_FEATURES,
         "stride": 2,
         "dropout": 0.1,
     }
