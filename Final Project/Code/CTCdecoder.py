@@ -9,7 +9,7 @@ import LSTMCorpus, PreProcessing
 
 from torchaudio.models.decoder import ctc_decoder
 
-LM_WEIGHT = 0.2
+LM_WEIGHT = -3.0
 WORD_SCORE = -0.26
 
 
@@ -95,8 +95,8 @@ class Files:
     lex = build_lexicon()
     lexicon = 'lexicon.txt'
     tokens, tokens_d = build_tokens()
-    # lm = load_model(lex)
-    lm = None
+    lm = load_model(lex)
+    # lm = None
 
 def create_beam_search_decoder(files: Files):
     beam_search_decoder = ctc_decoder(

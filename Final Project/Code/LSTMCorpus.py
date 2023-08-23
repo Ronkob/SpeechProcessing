@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from collections import Counter
 from sklearn.model_selection import train_test_split
 import numpy as np
+from tqdm import tqdm
+
 import PreProcessing
 
 
@@ -36,7 +38,7 @@ def preprocess_data(phrases, vocab):
 class LSTMModel(nn.Module):
     def __init__(self, embedding_dim, hidden_dim):
         super().__init__()
-        self.vocab_size = 0
+        self.vocab_size = 27
         self.vocab = {}
         self.set_vocab()
         self.embedding = nn.Embedding(self.vocab_size, embedding_dim)
@@ -76,24 +78,25 @@ class LSTMModel(nn.Module):
         print(tokens)
         # Create vocabulary
         self.vocab = {word: i for i, (word, _) in enumerate(Counter(tokens).items())}
-        self.vocab_size = len(self.vocab)
+        # self.vocab_size = len(self.vocab)
         # save the vocab as a pickle file
         with open("vocab.pkl", "wb") as f:
             pickle.dump(self.vocab, f)
 
 
-def train_model(model, train_loader, epochs=100):
+def train_model(model, train_loader, epochs=200):
     optimizer = optim.Adam(model.parameters())
     loss_function = nn.CrossEntropyLoss(ignore_index=27)  # ignore index=27? index 27 is blanks
 
-    for epoch in range(epochs):
+    p_bar = tqdm(range(epochs))
+    for epoch in p_bar:
         for inputs, targets in train_loader:
             outputs, _ = model(inputs)
             loss = loss_function(outputs.view(-1, outputs.size(2)), targets.view(-1))
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            print(loss.item())
+            p_bar.set_description("Loss: {}".format(loss.item()))
 
     # Save model if needed
     torch.save(model.state_dict(), "lstm_model.pth")
@@ -103,7 +106,7 @@ def build_model_from_phrases(phrases):
     model = LSTMModel(embedding_dim=100, hidden_dim=128)
     input_sequences, target_sequences = preprocess_data(phrases, model.vocab)
     dataset = TensorDataset(torch.stack(input_sequences), torch.stack(target_sequences))
-    train_loader = DataLoader(dataset, batch_size=2, shuffle=True)
+    train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     train_model(model, train_loader)
 

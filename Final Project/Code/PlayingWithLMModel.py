@@ -1,15 +1,18 @@
 # import the LSTMModel class from the directory above
 import pickle
 from collections import Counter
+import PreProcessing
 
 import numpy as np
 
 import LSTMCorpus
 import torch
+import os
 
 
-def load_model(vocab_size, embedding_dim=80, hidden_dim=64):
-    model = LSTMCorpus.LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim)
+def load_model(embedding_dim=120, hidden_dim=128):
+    model = LSTMCorpus.LSTMModel(embedding_dim=embedding_dim, hidden_dim=hidden_dim)
+    print(os.listdir())
     model.load_state_dict(torch.load("lstm_model.pth"))
     return model
 
@@ -62,24 +65,8 @@ def fix_sequence_to_pred(model, input_seq, vocab):
 
 if __name__ == '__main__':
     # load the vocabulary from vocab.pkl
-    with open("vocab.pkl", "rb") as f:
-        vocabulary = pickle.load(f)
+    model = load_model()
 
-    print(vocabulary)
-    # Load the trained model
-    vocab_size = len(vocabulary)  # Make sure to have the vocabulary available
-    model = load_model(vocab_size)
+    score = model.score_sequence(PreProcessing.text_to_labels("one two three"))
 
-    # Input text to start prediction
-    input_text = [1, 2, 0]
-
-    bad_input = [3]
-
-    print("Bad Input: ", model.score_sequence(bad_input))
-
-    print("Good Input: ", model.score_sequence(input_text))
-
-    # Get the predicted next words
-    # predicted_words = predict_next_chars(model, input_text, vocabulary)
-
-    print("Input:", input_text)
+    print(score)

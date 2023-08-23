@@ -193,9 +193,9 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
 
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
         run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
-                         epoch, eval_function=eval_func_beam)
+                         epoch, eval_function=None)
 
-    for epoch in range(num_epochs, num_epochs + 50):
+    for epoch in tqdm.tqdm(range(num_epochs, num_epochs + 50)):
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
         run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
                          epoch, eval_function=eval_func_beam)
