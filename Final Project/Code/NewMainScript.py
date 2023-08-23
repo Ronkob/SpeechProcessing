@@ -46,44 +46,45 @@ def create_model(PhaseNumber, phase_model_class, config=None):
         )
 
     test_dataloader = None
-    wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
+    # wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
-    dataset = PreProcessing.AudioDatasetV3(wavs, txts)
-    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
-                                                   shuffle=True,
-                                                   collate_fn=lambda x:
-                                                   PreProcessing.process_data(x))
-    wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
+    # dataset = PreProcessing.AudioDatasetV3(wavs, txts)
+    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
+    #                                                shuffle=True,
+    #                                                collate_fn=lambda x:
+    #                                                PreProcessing.process_data(x))
+    # wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
     # test_dataset = PreProcessing.AudioDatasetV3(wavs, txts)
     # test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
     #                                               collate_fn=lambda x:
     #                                               PreProcessing.process_data(x)
     #                                               )
 
-    test_dataset = PreProcessing.AudioDatasetV2(wavs, txts)
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
-                                                  shuffle=False)
 
 
 
-    model = PhaseThreeModel.PhaseThreeModel(config,
-                                            n_cnn_layers=config.hyperparams['n_cnn_layers'],
-                                            n_rnn_layers=config.hyperparams['n_rnn_layers'],
-                                            rnn_dim=config.hyperparams['rnn_dim'],
-                                            n_class=config.hyperparams['n_class'],
-                                            n_feats=config.hyperparams['n_feats'],
-                                            stride=config.hyperparams['stride'],
-                                            dropout=config.hyperparams['dropout'],
-                                            )
-
+    # model = PhaseThreeModel.PhaseThreeModel(config,
+    #                                         n_cnn_layers=config.hyperparams['n_cnn_layers'],
+    #                                         n_rnn_layers=config.hyperparams['n_rnn_layers'],
+    #                                         rnn_dim=config.hyperparams['rnn_dim'],
+    #                                         n_class=config.hyperparams['n_class'],
+    #                                         n_feats=config.hyperparams['n_feats'],
+    #                                         stride=config.hyperparams['stride'],
+    #                                         dropout=config.hyperparams['dropout'],
+    #                                         )
     wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
     dataset = PreProcessing.AudioDatasetV2(wavs, txts)
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
                                                    shuffle=False)
+
+    wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
+    test_dataset = PreProcessing.AudioDatasetV2(wavs, txts)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
+                                                  shuffle=False)
     model = PhaseTwoModel.PhaseTwoModel()
 
-    return model, train_dataloader, test_dataloader, device
+    return model, train_dataloader, train_dataloader, device
 
 
 if __name__ == '__main__':

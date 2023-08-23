@@ -77,8 +77,8 @@ def evaluate_model(model, dataloader, device=torch.device("cuda:0" if torch.cuda
     outputs = predictions
     labels = targets
     # print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
-    outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
     try:
+        outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
         wer_score = wer(outputs, labels)
         cer_score = cer(outputs, labels)
     except Exception as e:
@@ -119,7 +119,13 @@ def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.de
         labels = labels_batch
         # all_labels_lengths = torch.cat(all_labels_lengths)
         if beam_search_decoder:
-            outputs = " ".join(beam_search_decoder(outputs_batch.to('cpu'))[0][0].words).strip()
+            hypos = beam_search_decoder(outputs_batch.to('cpu'))
+            outputs = [hypo[0].tokens.tolist() for hypo in hypos]
+            print("Output tokens: " + str(outputs))
+            outputs_words = [hypo[0].words for hypo in hypos]
+            print("Output words: " + str(outputs_words))
+            outputs_words = [' '.join(words) for words in outputs_words]
+            print("Output words: " + str(outputs_words))
         else:
             outputs, labels = GreedyDecoder(outputs_batch.to(device), labels.to(device),
                                             labels_lengths.to(device),
@@ -131,16 +137,24 @@ def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.de
     outputs = predictions
     labels = targets
     # print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
-    outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
     try:
+        outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
         wer_score = wer(outputs, labels)
         cer_score = cer(outputs, labels)
     except Exception as e:
-        print("Error calculating wer and cer. Message: {}".format(e))
-        print("score failure count: {}".format(score_failure_count))
-        score_failure_count += 1
-        wer_score = 0
-        cer_score = 0
+        try:
+            # outputs = [PreProcessing.labels_to_text(output) for output in predictions]
+            outputs = [output.strip() if output.strip() != '' else '<placeholder>' for output in outputs_words]
+            labels = [PreProcessing.labels_to_text(label.tolist()).strip() for label in targets]
+            print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
+            wer_score = wer(outputs, labels)
+            cer_score = cer(outputs, labels)
+        except Exception as e:
+            print("Error calculating wer and cer. Message: {}".format(e))
+            print("score failure count: {}".format(score_failure_count))
+            score_failure_count += 1
+            wer_score = 0
+            cer_score = 0
     print('Word Error Rate: ' + str(wer_score))
     print('Character Error Rate: ' + str(cer_score))
     return wer_score, cer_score

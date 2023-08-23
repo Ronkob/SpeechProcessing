@@ -156,7 +156,7 @@ def load_data(mode, data_path):
         label = txt.readline()
         txts.append(label)
 
-    return wavs, txts
+    return wavs[:2], txts[:2]
 
 
 class AudioDatasetV2(torch.utils.data.Dataset):

@@ -95,8 +95,8 @@ class Files:
     lex = build_lexicon()
     lexicon = 'lexicon.txt'
     tokens, tokens_d = build_tokens()
-    lm = load_model(lex)
-
+    # lm = load_model(lex)
+    lm = None
 
 def create_beam_search_decoder(files: Files):
     beam_search_decoder = ctc_decoder(
@@ -105,7 +105,7 @@ def create_beam_search_decoder(files: Files):
         lm=files.lm,
         lm_dict='lm_dict.txt',
         nbest=1,
-        beam_size=10,
+        beam_size=20,
         lm_weight=LM_WEIGHT,
         word_score=WORD_SCORE,
         blank_token='?',
