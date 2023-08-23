@@ -32,6 +32,7 @@ class PhaseThreeModel(torch.nn.Module):
         # self.net_phase2 = PhaseTwoModel.NeuralNetAudioPhaseTwo()
         # self.ctc_loss = torch.nn.CTCLoss()
         self.cnn = torch.nn.Conv2d(1, 32, kernel_size=3, stride=stride, padding=1)
+        self.relu = torch.nn.ReLU()
 
         # n residual cnn layers with filter size of 32
         self.rescnn_layers = nn.Sequential(*[
@@ -55,7 +56,7 @@ class PhaseThreeModel(torch.nn.Module):
         )
 
     def forward(self, x):
-        x = self.cnn(x)
+        x = self.relu(self.cnn(x))
         x = self.rescnn_layers(x)
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # (batch, feature, time)
@@ -148,7 +149,7 @@ def create_eval_func_beam_search(test_dataloader, config, beam_search):
                        "CER": cer,
                        })
         else:
-            print("Epoch: ", epoch, "WER: ", wer, "CER: ", cer)
+            print("Epoch: ", epoch, "Running Loss: ", running_loss, "WER: ", wer, "CER: ", cer)
 
     return eval_func
 
@@ -165,20 +166,31 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
     num_epochs = config.epochs
 
     beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
-    eval_func_beam = create_eval_func_beam_search(test_dataloader, config, beam_search=None)
+    eval_func_greedy = create_eval_func_beam_search(test_dataloader, config, beam_search=None)
+    eval_func_beam = create_eval_func_beam_search(test_dataloader, config, beam_search=beam_search_decoder)
 
-    # (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
-    # first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device),
-    # labels_lengths[
-    #     0]
-    # print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ",
-    #       first_label_length)
+    (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
+    first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), \
+        labels_lengths[0]
+
+    print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ",
+          first_label_length)
 
     # beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
     for epoch in range(num_epochs):
+        model_preds = model(first_input.unsqueeze(0).to(device))
+        print("model preds: ", model_preds.shape)
+        print("Model Output: ", PreProcessing.labels_to_text(torch.argmax(model_preds, dim=2)[0]))
+
+        print("Model Prediction Greedy: ",
+              Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
+                                       blank_label=BLANK_IDX, collapse_repeated=True))
+        beam_search_pred = beam_search_decoder(model_preds.to('cpu'))
+        print("Beam Search Prediction: ", beam_search_pred)
+
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
         run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
-                         epoch, eval_function=None)
+                         epoch, eval_function=eval_func_greedy)
 
     for epoch in range(num_epochs, num_epochs + 50):
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")

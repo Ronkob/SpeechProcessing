@@ -119,7 +119,7 @@ def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.de
         labels = labels_batch
         # all_labels_lengths = torch.cat(all_labels_lengths)
         if beam_search_decoder:
-            outputs = " ".join(beam_search_decoder(outputs_batch)[0][0].words).strip()
+            outputs = " ".join(beam_search_decoder(outputs_batch.to('cpu'))[0][0].words).strip()
         else:
             outputs, labels = GreedyDecoder(outputs_batch, labels, labels_lengths, blank_label=27,
                                             collapse_repeated=True)

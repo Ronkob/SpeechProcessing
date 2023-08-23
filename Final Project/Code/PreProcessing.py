@@ -11,8 +11,8 @@ import librosa
 DATA_PATH = 'an4/'
 # DATA_PATH = "/content/drive/MyDrive/Year3/Speach/final/an4/"
 NUM_CLASSES = 27  # adjust this according to your needs
-BLANK_IDX = NUM_CLASSES # blank is ?, the last
-VOCABULARY = "abcdefghijklmnopqrstuvwxyz ?" # ? is blank, | is silence
+BLANK_IDX = NUM_CLASSES  # blank is ?, the last
+VOCABULARY = "abcdefghijklmnopqrstuvwxyz ?"  # ? is blank, | is silence
 
 # Constants for the feature extraction
 N_MFCC = 20
@@ -21,6 +21,7 @@ WIN_LENGTH = 400  # number of samples in each frame
 HOP_LENGTH = WIN_LENGTH // 2  # number of samples between successive frames
 N_MELS = 40  # number of Mel bands to generate
 N_FEATURES = N_MFCC  # number of features to use
+
 
 class FeatureExtractor(torch.nn.Module):
     def __init__(self, *args, **kwargs):
@@ -153,7 +154,8 @@ def load_data(mode, data_path):
         label = txt.readline()
         txts.append(label)
 
-    return wavs[:1], txts[:1]
+    return wavs, txts
+
 
 class AudioDatasetV2(torch.utils.data.Dataset):
     def __init__(self, wavs, txts):
@@ -206,6 +208,7 @@ train_audio_transforms = nn.Sequential(
     torchaudio.transforms.TimeMasking(time_mask_param=100),
 )
 
+
 def process_data(data):
     spectrograms = []
     labels = []
@@ -217,13 +220,14 @@ def process_data(data):
         #                                                    "n_mels": N_MELS, "center": False,
         #                                                    "win_length": WIN_LENGTH})(wav).squeeze(0)
         spectogram = train_audio_transforms(wav).squeeze(0).transpose(0, 1)
-        spectogram = spectogram.transpose(0, 1)  # (time, channel, feature)
+        # spectogram = spectogram.transpose(0, 1)  # (time, channel, feature)
         spectrograms.append(spectogram)
         labels.append(torch.tensor(text_to_labels(txt.lower())))
         labels_lengths.append(len(txt))  # Store original lengths before padding
-        input_lengths.append(spectogram.shape[1]//2)  # Store original lengths before padding
+        input_lengths.append(spectogram.shape[1] // 2)  # Store original lengths before padding
 
-    spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1) # (batch, channel, feature, time)
+    spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1).transpose(
+        2, 3)  # (# batch, channel, feature, time)
     labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True)
 
     return (spectrograms, input_lengths), (labels, labels_lengths)
