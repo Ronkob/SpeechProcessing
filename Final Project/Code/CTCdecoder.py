@@ -9,7 +9,7 @@ import LSTMCorpus, PreProcessing
 
 from torchaudio.models.decoder import ctc_decoder
 
-LM_WEIGHT = 3.23
+LM_WEIGHT = 0.2
 WORD_SCORE = -0.26
 
 

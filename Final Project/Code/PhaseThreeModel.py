@@ -8,6 +8,7 @@ import wandb
 import random
 import librosa
 import PreProcessing, Evaluating, PhaseTwoModel, CTCdecoder
+import tqdm
 
 BLANK_IDX = PreProcessing.BLANK_IDX
 
@@ -175,22 +176,24 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
 
     print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ",
           first_label_length)
+    print("Input txt: " + PreProcessing.labels_to_text(first_label))
 
     # beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
-    for epoch in range(num_epochs):
+    for epoch in tqdm.tqdm(range(num_epochs)):
+        print(' \n ')
         model_preds = model(first_input.unsqueeze(0).to(device))
         print("model preds: ", model_preds.shape)
         print("Model Output: ", PreProcessing.labels_to_text(torch.argmax(model_preds, dim=2)[0]))
 
-        print("Model Prediction Greedy: ",
-              Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
-                                       blank_label=BLANK_IDX, collapse_repeated=True))
-        beam_search_pred = beam_search_decoder(model_preds.to('cpu'))
-        print("Beam Search Prediction: ", beam_search_pred)
+        # print("Model Prediction Greedy: ",
+        #       Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
+        #                                blank_label=BLANK_IDX, collapse_repeated=True))
+        # beam_search_pred = beam_search_decoder(model_preds.to('cpu'))
+        # print("Beam Search Prediction: ", beam_search_pred)
 
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
         run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
-                         epoch, eval_function=eval_func_greedy)
+                         epoch, eval_function=eval_func_beam)
 
     for epoch in range(num_epochs, num_epochs + 50):
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
@@ -244,6 +247,7 @@ def run_single_epoch(config, model, optimizer, scheduler, criterion, train_datal
         running_loss += loss.item()
         if i % 10 == 9:  # print every 2000 mini-batches
             print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
+            running_loss = 0.0
 
         if config.wandb_init:
             wandb.log({"epoch": epoch, "batch": i,

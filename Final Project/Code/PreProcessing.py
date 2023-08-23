@@ -44,20 +44,22 @@ class FeatureExtractorV2(torch.nn.Module):
                       "n_mels": N_MELS,
                       "win_length": WIN_LENGTH}
 
+        device = x.device
         mfccs = torchaudio.transforms.MFCC(n_mfcc=N_MFCC,
-                                           melkwargs=mrfcc_dict)(x)
+                                           melkwargs=mrfcc_dict).to(device)(x)
         # add some more features, like the delta and delta-delta
         mfccs_delta = torchaudio.functional.compute_deltas(mfccs)
         mfccs_delta_delta = torchaudio.functional.compute_deltas(mfccs_delta)
 
+
         # add even more features to detect syllables, such as: the energy, the pitch, the formants, etc.
-        energy = torchaudio.transforms.MFCC(n_mfcc=1, melkwargs=mrfcc_dict)(x)
+        energy = torchaudio.transforms.MFCC(n_mfcc=1, melkwargs=mrfcc_dict).to(device)(x)
         energy_delta = torchaudio.functional.compute_deltas(energy)
         energy_delta_delta = torchaudio.functional.compute_deltas(energy_delta)
 
         # concatenate the features
         features = torch.cat((mfccs, mfccs_delta, mfccs_delta_delta,
-                              energy, energy_delta, energy_delta_delta), dim=2)
+                              energy, energy_delta, energy_delta_delta), dim=2).to(device)
         return features
 
 

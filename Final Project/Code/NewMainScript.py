@@ -55,11 +55,15 @@ def create_model(PhaseNumber, phase_model_class, config=None):
                                                    collate_fn=lambda x:
                                                    PreProcessing.process_data(x))
     wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
-    test_dataset = PreProcessing.AudioDatasetV3(wavs, txts)
+    # test_dataset = PreProcessing.AudioDatasetV3(wavs, txts)
+    # test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
+    #                                               collate_fn=lambda x:
+    #                                               PreProcessing.process_data(x)
+    #                                               )
+
+    test_dataset = PreProcessing.AudioDatasetV2(wavs, txts)
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
-                                                  collate_fn=lambda x:
-                                                  PreProcessing.process_data(x)
-                                                  )
+                                                  shuffle=False)
 
 
 
@@ -73,11 +77,11 @@ def create_model(PhaseNumber, phase_model_class, config=None):
                                             dropout=config.hyperparams['dropout'],
                                             )
 
-    # wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
-    # dataset = PreProcessing.AudioDatasetV2(wavs, txts)
-    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
-    #                                                shuffle=False)
-    # model = PhaseTwoModel.PhaseTwoModel()
+    wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
+    dataset = PreProcessing.AudioDatasetV2(wavs, txts)
+    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
+                                                   shuffle=False)
+    model = PhaseTwoModel.PhaseTwoModel()
 
     return model, train_dataloader, test_dataloader, device
 
