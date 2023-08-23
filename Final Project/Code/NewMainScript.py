@@ -88,18 +88,6 @@ if __name__ == '__main__':
                                                                     PhaseThreeModel.PhaseThreeModel,
                                                                     config=Config(wandb_init=False))
     criterion = torch.nn.CTCLoss(blank=PreProcessing.BLANK_IDX).to(device)
-    PhaseThreeModel.train_model_phase_three(model, train_dataloader, criterion, device, config=Config(
-        wandb_init=False))
-
-    for i in range(10):
-        print("Epoch: ", i)
-        (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
-        first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), \
-        labels_lengths[0]
-
-        print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ",
-              first_label_length)
-
-        print("\npreds:" , PreProcessing.labels_to_text(model.predict(first_input.unsqueeze(0))[0]))
-
+    PhaseThreeModel.train_model_phase_three(model, train_dataloader, criterion, device,
+                                            test_dataloader=test_dataloader, config=Config(wandb_init=False))
 

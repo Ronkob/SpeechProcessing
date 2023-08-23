@@ -92,6 +92,57 @@ def evaluate_model(model, dataloader, device=torch.device("cuda:0" if torch.cuda
     return wer_score, cer_score
 
 
+def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
+    model.to(device)
+    model.eval()
+    outputs = []
+    labels = []
+    all_labels_lengths = []
+    score_failure_count = 0
+
+    predictions = []
+    targets = []
+
+    for i, data in enumerate(dataloader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        (inputs, input_lengths), (labels_batch, labels_lengths) = data
+        inputs, labels_batch = inputs.to(device), labels_batch.to(device)
+
+        # forward + backward + optimize
+        outputs_batch = model(inputs)
+
+        # outputs.append(outputs_batch)
+        # labels.append(labels_batch)
+        # all_labels_lengths.append(labels_lengths)
+        #
+        # outputs = torch.cat(outputs)
+        labels = labels_batch
+        # all_labels_lengths = torch.cat(all_labels_lengths)
+        if beam_search_decoder:
+            outputs = " ".join(beam_search_decoder(outputs_batch)[0][0].words).strip()
+        else:
+            outputs, labels = GreedyDecoder(outputs_batch, labels, labels_lengths, blank_label=27,
+                                            collapse_repeated=True)
+        predictions.extend(outputs)
+        targets.extend(labels)
+
+    outputs = predictions
+    labels = targets
+    # print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
+    outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
+    try:
+        wer_score = wer(outputs, labels)
+        cer_score = cer(outputs, labels)
+    except Exception as e:
+        print("Error calculating wer and cer. Message: {}".format(e))
+        print("score failure count: {}".format(score_failure_count))
+        score_failure_count += 1
+        wer_score = 0
+        cer_score = 0
+    print('Word Error Rate: ' + str(wer_score))
+    print('Character Error Rate: ' + str(cer_score))
+    return wer_score, cer_score
+
 # a function that calculates the word error rate
 def calculate_wer(outputs, labels):
     wer_sum = 0

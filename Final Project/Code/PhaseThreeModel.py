@@ -76,26 +76,28 @@ class PhaseThreeModel(torch.nn.Module):
 
 class CNNLayerNorm(nn.Module):
     """Layer normalization built for cnns input"""
+
     def __init__(self, n_feats):
         super(CNNLayerNorm, self).__init__()
         self.layer_norm = nn.LayerNorm(n_feats)
 
     def forward(self, x):
         # x (batch, channel, feature, time)
-        x = x.transpose(2, 3).contiguous() # (batch, channel, time, feature)
+        x = x.transpose(2, 3).contiguous()  # (batch, channel, time, feature)
         x = self.layer_norm(x)
-        return x.transpose(2, 3).contiguous() # (batch, channel, feature, time)
+        return x.transpose(2, 3).contiguous()  # (batch, channel, feature, time)
 
 
 class ResidualCNN(nn.Module):
     """Residual CNN inspired by https://arxiv.org/pdf/1603.05027.pdf
         except with layer norm instead of batch norm
     """
+
     def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
         super(ResidualCNN, self).__init__()
 
-        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel//2)
-        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel//2)
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.layer_norm1 = CNNLayerNorm(n_feats)
@@ -112,7 +114,7 @@ class ResidualCNN(nn.Module):
         x = self.dropout2(x)
         x = self.cnn2(x)
         x += residual
-        return x # (batch, channel, feature, time)
+        return x  # (batch, channel, feature, time)
 
 
 class BidirectionalGRU(nn.Module):
@@ -133,6 +135,24 @@ class BidirectionalGRU(nn.Module):
         x = self.dropout(x)
         return x
 
+
+def create_eval_func_beam_search(test_dataloader, config, beam_search):
+    def eval_func(model, epoch, running_loss):
+        model.eval()
+        wer, cer = Evaluating.evaluate_beam_search(model, test_dataloader, beam_search)
+        print(f'WER: {wer}, CER: {cer}')
+        if config.wandb_init:
+            wandb.log({"epoch": epoch,
+                       "running_loss": running_loss,
+                       "WER": wer,
+                       "CER": cer,
+                       })
+        else:
+            print("Epoch: ", epoch, "WER: ", wer, "CER: ", cer)
+
+    return eval_func
+
+
 def train_model_phase_three(model, train_dataloader, criterion, device='cpu', test_dataloader=None,
                             config=None):
     # Define optimizer (you may want to adjust parameters according to your needs)
@@ -140,85 +160,85 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config.learning_rate,
                                               steps_per_epoch=int(len(train_dataloader)),
-                                              epochs=config.epochs,
+                                              epochs=config.epochs + 50,
                                               anneal_strategy='linear')
     num_epochs = config.epochs
 
-    (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
-    first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), labels_lengths[0]
-    print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ", first_label_length)
-
     beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
+    eval_func_beam = create_eval_func_beam_search(test_dataloader, config, beam_search=None)
+
+    # (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
+    # first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device),
+    # labels_lengths[
+    #     0]
+    # print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ",
+    #       first_label_length)
+
+    # beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
     for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-
         print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
-        model_preds = model(first_input.unsqueeze(0))
-        print("model preds: ", model_preds.shape)
-        print("Model Output: ", PreProcessing.labels_to_text(torch.argmax(model_preds, dim=2)[0]))
+        run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
+                         epoch, eval_function=None)
 
-        print("Model Prediction: ",
-              Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
-                                       blank_label=BLANK_IDX, collapse_repeated=True))
-        beam_search_pred = beam_search_decoder(model_preds)
-        print("Beam Search Prediction: ", beam_search_pred)
-
-        for i, data in enumerate(train_dataloader, 0):
-            # get the inputs; data is a list of [inputs, labels]
-            (inputs, input_lengths), (labels, labels_lengths) = data
-            inputs, labels = inputs.to(device), labels.to(device)
-
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward + backward + optimize
-            outputs = model(inputs)
-            # print("Does the model output have nan values? ", "bad" if torch.isnan(outputs).any() else "good")
-            # Force the output probs of the blank label to be smaller than they are
-            # outputs[:, :, BLANK_IDX] = outputs[:, :, BLANK_IDX] / 5
-            # outputs[:, :, BLANK_IDX-1] = outputs[:, :, BLANK_IDX-1] / 5
-
-            outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=2)
-            # print("Does the model output have nan values? ", "bad" if torch.isnan(outputs_logsoft).any() else "good")
-            # Calculate input and target lengths
-            input_lengths = torch.as_tensor(input_lengths, dtype=torch.long)
-            target_lengths = torch.as_tensor(labels_lengths, dtype=torch.long)
-
-            # calculate loss
-            outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
-            # print("Does the model output have nan values? ", "bad" if torch.isnan(outputs_to_ctc).any() else
-            # "good")
-
-
-
-            loss = criterion(outputs_to_ctc, labels, input_lengths, target_lengths)
-            loss.backward()
-
-            optimizer.step()
-            scheduler.step()
-
-            # print statistics
-            running_loss += loss.item()
-            if i % 10 == 9:  # print every 2000 mini-batches
-                print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
-
-            if config.wandb_init:
-                wandb.log({"epoch": epoch, "batch": i,
-                           "step": epoch * len(train_dataloader) + i,
-                           "loss": loss.item(),
-                           "running_loss": running_loss})
-
-                running_loss = 0.0
-
-        if test_dataloader is not None:
-            wer, cer = Evaluating.evaluate_model(model, test_dataloader)
-            print(f'WER: {wer}, CER: {cer}')
-            wandb.log({"epoch": epoch,
-                       "running_loss": running_loss,
-                       "WER": wer,
-                       "CER": cer,
-                       })
-
+    for epoch in range(num_epochs, num_epochs + 50):
+        print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
+        run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
+                         epoch, eval_function=eval_func_beam)
 
     print('Finished Training')
+
+
+def run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
+                     epoch, eval_function=None):
+    model.train()
+    running_loss = 0.0
+
+    # model_preds = model(first_input.unsqueeze(0))
+    # print("model preds: ", model_preds.shape)
+    # print("Model Output: ", PreProcessing.labels_to_text(torch.argmax(model_preds, dim=2)[0]))
+
+    # print("Model Prediction: ",
+    #       Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
+    #                                blank_label=BLANK_IDX, collapse_repeated=True))
+    # beam_search_pred = beam_search_decoder(model_preds)
+    # print("Beam Search Prediction: ", beam_search_pred)
+
+    for i, data in enumerate(train_dataloader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        (inputs, input_lengths), (labels, labels_lengths) = data
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        # zero the parameter gradients
+        optimizer.zero_grad()
+
+        # forward + backward + optimize
+        outputs = model(inputs)
+
+        outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=2)
+
+        input_lengths = torch.as_tensor(input_lengths, dtype=torch.long)
+        target_lengths = torch.as_tensor(labels_lengths, dtype=torch.long)
+
+        # calculate loss
+        outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
+
+        loss = criterion(outputs_to_ctc, labels, input_lengths, target_lengths)
+        loss.backward()
+
+        optimizer.step()
+        scheduler.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % 10 == 9:  # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
+
+        if config.wandb_init:
+            wandb.log({"epoch": epoch, "batch": i,
+                       "step": epoch * len(train_dataloader) + i,
+                       "loss": loss.item(),
+                       "running_loss": running_loss})
+
+    if eval_function is not None:
+        eval_function(model, epoch, running_loss)
+
