@@ -9,8 +9,8 @@ import LSTMCorpus, PreProcessing
 
 from torchaudio.models.decoder import ctc_decoder
 
-LM_WEIGHT = -3.0
-WORD_SCORE = -0.26
+LM_WEIGHT = 0
+WORD_SCORE = -2
 
 
 def build_tokens():

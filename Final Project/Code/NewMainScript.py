@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-import PreProcessing, PhaseOneModel, PhaseTwoModel, PhaseThreeModel, Evaluating
+import PreProcessing, PhaseOneModel, PhaseTwoModel, PhaseThreeModel, Evaluating, PhaseFourModel
 import torch
 import wandb
 
@@ -8,21 +8,20 @@ import wandb
 # %%
 @dataclass
 class Config:
-    learning_rate: float = 5e-4
-    epochs: int = 300
+    learning_rate: float = 0.001
+    epochs: int = 600
     batch_size: int = 32
     wandb_init: bool = False
 
     hyperparams = {
-        "n_cnn_layers": 1,
+        "n_cnn_layers": 2,
         "n_rnn_layers": 1,
-        "rnn_dim": 128,
+        "rnn_dim": 32,
         "n_class": PreProcessing.NUM_CLASSES+1,
         "n_feats": 128,
-        "stride": 2,
-        "dropout": 0.5,
+        "stride": 1,
+        "dropout": 0.1,
     }
-
 
 def create_model(PhaseNumber, phase_model_class, config=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,23 +45,21 @@ def create_model(PhaseNumber, phase_model_class, config=None):
         )
 
     test_dataloader = None
-    # wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
     # Now you can create a Dataset and DataLoader for your data
-    # dataset = PreProcessing.AudioDatasetV3(wavs, txts)
-    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
-    #                                                shuffle=True,
-    #                                                collate_fn=lambda x:
-    #                                                PreProcessing.process_data(x))
-    # wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
-    # test_dataset = PreProcessing.AudioDatasetV3(wavs, txts)
-    # test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
-    #                                               collate_fn=lambda x:
-    #                                               PreProcessing.process_data(x)
-    #                                               )
+    wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
-
-
+    dataset = PreProcessing.AudioDatasetV3(wavs, txts)
+    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
+                                                   shuffle=True,
+                                                   collate_fn=lambda x:
+                                                   PreProcessing.process_data(x))
+    wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
+    test_dataset = PreProcessing.AudioDatasetV3(wavs, txts)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
+                                                  collate_fn=lambda x:
+                                                  PreProcessing.process_data(x)
+                                                  )
 
     # model = PhaseThreeModel.PhaseThreeModel(config,
     #                                         n_cnn_layers=config.hyperparams['n_cnn_layers'],
@@ -73,16 +70,17 @@ def create_model(PhaseNumber, phase_model_class, config=None):
     #                                         stride=config.hyperparams['stride'],
     #                                         dropout=config.hyperparams['dropout'],
     #                                         )
-    wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
-    dataset = PreProcessing.AudioDatasetV2(wavs, txts)
-    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
-                                                   shuffle=False)
-
-    wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
-    test_dataset = PreProcessing.AudioDatasetV2(wavs, txts)
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
-                                                  shuffle=False)
-    model = PhaseTwoModel.PhaseTwoModel()
+    model = PhaseFourModel.PhaseFourModel(config)
+    # wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
+    # dataset = PreProcessing.AudioDatasetV2(wavs, txts)
+    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
+    #                                                shuffle=False)
+    #
+    # wavs, txts = PreProcessing.load_data(mode='test', data_path=PreProcessing.DATA_PATH)
+    # test_dataset = PreProcessing.AudioDatasetV2(wavs, txts)
+    # test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size,
+    #                                               shuffle=False)
+    # model = PhaseTwoModel.PhaseTwoModel()
 
     return model, train_dataloader, train_dataloader, device
 

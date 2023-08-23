@@ -10,10 +10,10 @@ import torch
 import os
 
 
-def load_model(embedding_dim=120, hidden_dim=128):
+def load_model(embedding_dim=100, hidden_dim=128):
     model = LSTMCorpus.LSTMModel(embedding_dim=embedding_dim, hidden_dim=hidden_dim)
     print(os.listdir())
-    model.load_state_dict(torch.load("lstm_model.pth"))
+    model.load_state_dict(torch.load('lstm_model.pth'))
     return model
 
 
@@ -68,5 +68,11 @@ if __name__ == '__main__':
     model = load_model()
 
     score = model.score_sequence(PreProcessing.text_to_labels("one two three"))
-
     print(score)
+
+    score = model.score_sequence(PreProcessing.text_to_labels("fds"))
+    print(score)
+
+    score = model.score_sequence(PreProcessing.text_to_labels("one two three four"))
+    print(score)
+

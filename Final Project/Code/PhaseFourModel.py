@@ -13,7 +13,7 @@ import tqdm
 BLANK_IDX = PreProcessing.BLANK_IDX
 
 
-class PhaseThreeModel(torch.nn.Module):
+class PhaseFourModel(torch.nn.Module):
     """
     this model will consist of a more complicated acoustic model, but still with no language model,
     only ctc loss
@@ -24,118 +24,40 @@ class PhaseThreeModel(torch.nn.Module):
     4. MLP head
     """
 
-    def __init__(self, config,
-                 n_cnn_layers, n_rnn_layers, rnn_dim, n_class, n_feats, stride=2, dropout=0.1,
-                 *args, **kwargs):
-        super(PhaseThreeModel, self).__init__()
-        n_feats = n_feats // 2
-        self.features_extractor = PreProcessing.FeatureExtractorV2()
-        # self.net_phase2 = PhaseTwoModel.NeuralNetAudioPhaseTwo()
-        # self.ctc_loss = torch.nn.CTCLoss()
-        self.cnn = torch.nn.Conv2d(1, 32, kernel_size=3, stride=stride, padding=1)
-        self.relu = torch.nn.ReLU()
+    def __init__(self, config, input_channels=1, num_classes=PreProcessing.NUM_CLASSES+1):
+        super(PhaseFourModel, self).__init__()
+        # 2D Convolutional layers
+        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
 
-        # n residual cnn layers with filter size of 32
-        self.rescnn_layers = nn.Sequential(*[
-            ResidualCNN(32, 32, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
-            for _ in range(n_cnn_layers)
-        ])
+        # Max pooling
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim)
+        # Fully connected layers (you may need to adjust the input size)
+        self.fc1 = nn.Linear(128 * 16, 64)  # Adjust based on the output size of the last Conv layer
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, num_classes)
 
-        self.birnn_layers = nn.Sequential(*[
-            BidirectionalGRU(rnn_dim=rnn_dim if i == 0 else rnn_dim * 2,
-                             hidden_size=rnn_dim, dropout=dropout, batch_first=i == 0)
-            for i in range(n_rnn_layers)
-        ])
-
-        self.classifier = nn.Sequential(
-            nn.Linear(rnn_dim * 2, rnn_dim),  # birnn returns rnn_dim*2
-            nn.GELU(),  # better activation function such as RELU for a flattened surface
-            nn.Dropout(dropout),
-            nn.Linear(rnn_dim, n_class)
-        )
+        # Dropout
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, x):
-        x = nn.functional.gelu(self.cnn(x))
-        x = F.max_pool2d(x, kernel_size=2, stride=2)
-        x = self.rescnn_layers(x)
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.pool(F.relu(self.conv3(x)))
+
         sizes = x.size()
-        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # (batch, feature, time)
-        x = x.transpose(1, 2)  # (batch, time, feature)
-        x = self.fully_connected(x)
-        x = self.birnn_layers(x)
-        x = self.classifier(x)
-        return x
+        # Flatten
+        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # (batch, features, time)
+        x = x.transpose(1, 2)  # (batch, time, features)
 
-    def predict(self, x):
-        # self.eval()
-        output = self.forward(x)  # (batch, time, classes)
-        output = torch.nn.functional.softmax(output, dim=2)
-        # turn output to the max probability for each time step
-        output = torch.argmax(output, dim=2).squeeze(1)  # (batch, time)
-        return output
+        # Fully connected layers with ReLU and dropout
+        x = self.dropout(F.relu(self.fc1(x)))
+        x = self.dropout(F.relu(self.fc2(x)))
 
-
-class CNNLayerNorm(nn.Module):
-    """Layer normalization built for cnns input"""
-
-    def __init__(self, n_feats):
-        super(CNNLayerNorm, self).__init__()
-        self.layer_norm = nn.LayerNorm(n_feats)
-
-    def forward(self, x):
-        # x (batch, channel, feature, time)
-        x = x.transpose(2, 3).contiguous()  # (batch, channel, time, feature)
-        x = self.layer_norm(x)
-        return x.transpose(2, 3).contiguous()  # (batch, channel, feature, time)
-
-
-class ResidualCNN(nn.Module):
-    """Residual CNN inspired by https://arxiv.org/pdf/1603.05027.pdf
-        except with layer norm instead of batch norm
-    """
-
-    def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
-        super(ResidualCNN, self).__init__()
-
-        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
-        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.layer_norm1 = CNNLayerNorm(n_feats)
-        self.layer_norm2 = CNNLayerNorm(n_feats)
-
-    def forward(self, x):
-        residual = x  # (batch, channel, feature, time)
-        x = self.layer_norm1(x)
-        x = F.relu(x)
-        x = self.dropout1(x)
-        x = self.cnn1(x)
-        x = self.layer_norm2(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.cnn2(x)
-        x += residual
-        return x  # (batch, channel, feature, time)
-
-
-class BidirectionalGRU(nn.Module):
-
-    def __init__(self, rnn_dim, hidden_size, dropout, batch_first):
-        super(BidirectionalGRU, self).__init__()
-
-        self.BiGRU = nn.GRU(
-            input_size=rnn_dim, hidden_size=hidden_size,
-            num_layers=1, batch_first=batch_first, bidirectional=True)
-        self.layer_norm = nn.LayerNorm(rnn_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        x = self.layer_norm(x)
-        x = F.gelu(x)
-        x, _ = self.BiGRU(x)
-        x = self.dropout(x)
+        # Output layer
+        x = self.fc3(x)
         return x
 
 
@@ -160,12 +82,11 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
                             config=None):
     # Define optimizer (you may want to adjust parameters according to your needs)
     model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
-    scheduler = None
-    # scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config.learning_rate,
-    #                                           steps_per_epoch=int(len(train_dataloader)),
-    #                                           epochs=config.epochs + 50,
-    #                                           anneal_strategy='linear')
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config.learning_rate,
+                                              steps_per_epoch=int(len(train_dataloader)),
+                                              epochs=config.epochs + 50,
+                                              anneal_strategy='linear')
     num_epochs = config.epochs
 
     beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
@@ -230,15 +151,20 @@ def run_single_epoch(config, model, optimizer, scheduler, criterion, train_datal
 
         # forward + backward + optimize
         outputs = model(inputs)
+
         outputs_logsoft = torch.nn.functional.log_softmax(outputs, dim=2)
-        outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
+
+        input_lengths = torch.as_tensor(input_lengths, dtype=torch.long)
+        target_lengths = torch.as_tensor(labels_lengths, dtype=torch.long)
 
         # calculate loss
-        loss = criterion(outputs_to_ctc, labels, input_lengths, labels_lengths)
+        outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
+
+        loss = criterion(outputs_to_ctc, labels, input_lengths, target_lengths)
         loss.backward()
 
         optimizer.step()
-        # scheduler.step()
+        scheduler.step()
 
         # print statistics
         running_loss += loss.item()
@@ -254,3 +180,4 @@ def run_single_epoch(config, model, optimizer, scheduler, criterion, train_datal
 
     if eval_function is not None:
         eval_function(model, epoch, running_loss)
+

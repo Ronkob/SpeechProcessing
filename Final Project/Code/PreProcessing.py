@@ -156,7 +156,7 @@ def load_data(mode, data_path):
         label = txt.readline()
         txts.append(label)
 
-    return wavs[:2], txts[:2]
+    return wavs[:1], txts[:1]
 
 
 class AudioDatasetV2(torch.utils.data.Dataset):
@@ -205,7 +205,13 @@ class AudioDatasetV3(torch.utils.data.Dataset):
 
 
 train_audio_transforms = nn.Sequential(
-    torchaudio.transforms.MelSpectrogram(sample_rate=44000, n_mels=128),
+    # torchaudio.transforms.MFCC(sample_rate=22050, n_mfcc=128,
+    #                                      melkwargs={
+    #                                      "f_min": 80, "f_max":300,  # frequencies are in Hz,
+    #                                      "hop_length": 512}),
+    torchaudio.transforms.MelSpectrogram(sample_rate=22050, n_mels=128,
+                                         f_min=80, f_max=300,  # frequencies are in Hz,
+                                         n_fft=1024, hop_length=256),
     torchaudio.transforms.FrequencyMasking(freq_mask_param=30),
     torchaudio.transforms.TimeMasking(time_mask_param=100),
 )
@@ -226,7 +232,7 @@ def process_data(data):
         spectrograms.append(spectogram)
         labels.append(torch.tensor(text_to_labels(txt.lower())))
         labels_lengths.append(len(txt))  # Store original lengths before padding
-        input_lengths.append(spectogram.shape[1] // 2)  # Store original lengths before padding
+        input_lengths.append(spectogram.shape[0]//8)  # Store original lengths before padding
 
     spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1).transpose(
         2, 3)  # (# batch, channel, feature, time)

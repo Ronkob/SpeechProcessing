@@ -66,7 +66,7 @@ class LSTMModel(nn.Module):
         char_probs = probabilities.gather(1, input_sequence[1:].unsqueeze(-1))
 
         # Calculate the log probability of the sequence.
-        log_prob = torch.log(char_probs).sum().item()
+        log_prob = torch.log(char_probs).sum().item()/len(sequence)
 
         return log_prob
 
@@ -84,7 +84,7 @@ class LSTMModel(nn.Module):
             pickle.dump(self.vocab, f)
 
 
-def train_model(model, train_loader, epochs=200):
+def train_model(model, train_loader, epochs=300):
     optimizer = optim.Adam(model.parameters())
     loss_function = nn.CrossEntropyLoss(ignore_index=27)  # ignore index=27? index 27 is blanks
 
