@@ -7,7 +7,7 @@ import torchaudio
 import wandb
 import random
 import librosa
-import PreProcessing, Evaluating, PhaseTwoModel
+import PreProcessing, Evaluating, PhaseTwoModel, CTCdecoder
 
 BLANK_IDX = PreProcessing.BLANK_IDX
 
@@ -48,7 +48,7 @@ class PhaseThreeModel(torch.nn.Module):
         ])
 
         self.classifier = nn.Sequential(
-            nn.Linear(rnn_dim * 2, rnn_dim),  # birnn returns rnn_dim*2
+            nn.Linear(rnn_dim, rnn_dim),  # birnn returns rnn_dim*2
             nn.GELU(),  # better activation function such as RELU for a flattened surface
             nn.Dropout(dropout),
             nn.Linear(rnn_dim, n_class)
@@ -61,7 +61,7 @@ class PhaseThreeModel(torch.nn.Module):
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # (batch, feature, time)
         x = x.transpose(1, 2)  # (batch, time, feature)
         x = self.fully_connected(x)
-        x = self.birnn_layers(x)
+        # x = self.birnn_layers(x)
         x = self.classifier(x)
         return x
 
@@ -148,6 +148,7 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
     first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), labels_lengths[0]
     print("First Input: ", first_input.shape, "First Label: ", first_label, "First Label Length: ", first_label_length)
 
+    beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -160,6 +161,8 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
         print("Model Prediction: ",
               Evaluating.GreedyDecoder(model_preds, [first_label], [first_label_length],
                                        blank_label=BLANK_IDX, collapse_repeated=True))
+        beam_search_pred = beam_search_decoder(model_preds)
+        print("Beam Search Prediction: ", beam_search_pred)
 
         for i, data in enumerate(train_dataloader, 0):
             # get the inputs; data is a list of [inputs, labels]
@@ -186,6 +189,8 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
             outputs_to_ctc = outputs_logsoft.transpose(0, 1)  # (time, batch, num_classes)
             # print("Does the model output have nan values? ", "bad" if torch.isnan(outputs_to_ctc).any() else
             # "good")
+
+
 
             loss = criterion(outputs_to_ctc, labels, input_lengths, target_lengths)
             loss.backward()

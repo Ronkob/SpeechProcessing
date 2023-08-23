@@ -37,7 +37,7 @@ class NeuralNetAudioPhaseTwo(torch.nn.Module):
         # Define your layers here
         self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.fc = torch.nn.Linear(320, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
+        self.fc = torch.nn.Linear(960, PreProcessing.NUM_CLASSES + 1)  # adjust this according to your needs
 
     def forward(self, x):
         # Define your forward pass here

@@ -8,14 +8,14 @@ import wandb
 # %%
 @dataclass
 class Config:
-    learning_rate: float = 5e-5
+    learning_rate: float = 5e-4
     epochs: int = 300
     batch_size: int = 32
     wandb_init: bool = False
 
     hyperparams = {
-        "n_cnn_layers": 3,
-        "n_rnn_layers": 5,
+        "n_cnn_layers": 1,
+        "n_rnn_layers": 1,
         "rnn_dim": 128,
         "n_class": PreProcessing.NUM_CLASSES+1,
         "n_feats": 128,
@@ -62,9 +62,6 @@ def create_model(PhaseNumber, phase_model_class, config=None):
                                                   )
 
 
-    # dataset = PreProcessing.AudioDatasetV2(wavs, txts)
-    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
-    #                                                shuffle=True)
 
     model = PhaseThreeModel.PhaseThreeModel(config,
                                             n_cnn_layers=config.hyperparams['n_cnn_layers'],
@@ -75,6 +72,12 @@ def create_model(PhaseNumber, phase_model_class, config=None):
                                             stride=config.hyperparams['stride'],
                                             dropout=config.hyperparams['dropout'],
                                             )
+
+    # wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
+    # dataset = PreProcessing.AudioDatasetV2(wavs, txts)
+    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size,
+    #                                                shuffle=False)
+    # model = PhaseTwoModel.PhaseTwoModel()
 
     return model, train_dataloader, test_dataloader, device
 

@@ -12,7 +12,7 @@ DATA_PATH = 'an4/'
 # DATA_PATH = "/content/drive/MyDrive/Year3/Speach/final/an4/"
 NUM_CLASSES = 27  # adjust this according to your needs
 BLANK_IDX = NUM_CLASSES # blank is ?, the last
-VOCABULARY = "abcdefghijklmnopqrstuvwxyz ?"
+VOCABULARY = "abcdefghijklmnopqrstuvwxyz ?" # ? is blank, | is silence
 
 # Constants for the feature extraction
 N_MFCC = 20
@@ -203,7 +203,7 @@ class AudioDatasetV3(torch.utils.data.Dataset):
 train_audio_transforms = nn.Sequential(
     torchaudio.transforms.MelSpectrogram(sample_rate=44000, n_mels=128),
     torchaudio.transforms.FrequencyMasking(freq_mask_param=30),
-    torchaudio.transforms.TimeMasking(time_mask_param=100)
+    torchaudio.transforms.TimeMasking(time_mask_param=100),
 )
 
 def process_data(data):
