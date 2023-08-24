@@ -139,19 +139,20 @@ class BidirectionalGRU(nn.Module):
         return x
 
 
-def create_eval_func_beam_search(test_dataloader, config, beam_search):
-    def eval_func(model, epoch, running_loss):
+def create_eval_func_beam_search(test_dataloader, kind, config, beam_search):
+    def eval_func(model):
         model.eval()
         wer, cer = Evaluating.evaluate_beam_search(model, test_dataloader, beam_search)
         print(f'WER: {wer}, CER: {cer}')
         if config.wandb_init:
-            wandb.log({"epoch": epoch,
-                       "running_loss": running_loss,
+            wandb.log({
+                       "Evaluation Method: ": "Beam Search" if beam_search is not None else "Greedy",
                        "WER": wer,
                        "CER": cer,
+                       "data": kind,
                        })
         else:
-            print("Epoch: ", epoch, "Running Loss: ", running_loss, "WER: ", wer, "CER: ", cer)
+            print("WER: ", wer, "CER: ", cer, "data: ", kind, "Evaluation Method: ", "Beam Search" if beam_search is not None else "Greedy")
 
     return eval_func
 
@@ -169,8 +170,11 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
     num_epochs = config.epochs
 
     beam_search_decoder = CTCdecoder.create_beam_search_decoder(CTCdecoder.Files())
-    eval_func_greedy = create_eval_func_beam_search(test_dataloader, config, beam_search=None)
-    eval_func_beam = create_eval_func_beam_search(test_dataloader, config, beam_search=beam_search_decoder)
+    eval_func_greedy = create_eval_func_beam_search(test_dataloader, 'test', config, beam_search=None)
+    eval_func_beam_test = create_eval_func_beam_search(test_dataloader, 'test', config,
+                                                      beam_search=beam_search_decoder)
+    eval_func_beam_train = create_eval_func_beam_search(train_dataloader, 'train', config,
+                                                      beam_search=beam_search_decoder)
 
     (inputs, input_lengths), (labels, labels_lengths) = next(iter(train_dataloader))
     first_input, first_label, first_label_length = inputs[0].to(device), labels[0].to(device), \
@@ -197,10 +201,13 @@ def train_model_phase_three(model, train_dataloader, criterion, device='cpu', te
         run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
                          epoch, eval_function=None)
 
-    for epoch in tqdm.tqdm(range(num_epochs, num_epochs + 50)):
-        print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
-        run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
-                         epoch, eval_function=eval_func_beam)
+    eval_func_beam_test(model)
+    eval_func_beam_train(model)
+    eval_func_greedy(model)
+    # for epoch in tqdm.tqdm(range(num_epochs, num_epochs + 50)):
+    #     print("Epoch: ", epoch, "/", num_epochs, " (", epoch / num_epochs * 100, "%)")
+    #     run_single_epoch(config, model, optimizer, scheduler, criterion, train_dataloader, device,
+    #                      epoch, eval_function=eval_func_beam)
 
     print('Finished Training')
 

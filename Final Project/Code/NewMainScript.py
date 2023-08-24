@@ -9,9 +9,10 @@ import wandb
 @dataclass
 class Config:
     learning_rate: float = 0.001
-    epochs: int = 600
+    epochs: int = 100
     batch_size: int = 32
     wandb_init: bool = False
+    dropout: float = 0.1
 
     hyperparams = {
         "n_cnn_layers": 2,
@@ -46,7 +47,7 @@ def create_model(PhaseNumber, phase_model_class, config=None):
 
     test_dataloader = None
 
-    # Now you can create a Dataset and DataLoader for your data
+    # # Now you can create a Dataset and DataLoader for your data
     wavs, txts = PreProcessing.load_data(mode='train', data_path=PreProcessing.DATA_PATH)
 
     dataset = PreProcessing.AudioDatasetV3(wavs, txts)
@@ -82,7 +83,7 @@ def create_model(PhaseNumber, phase_model_class, config=None):
     #                                               shuffle=False)
     # model = PhaseTwoModel.PhaseTwoModel()
 
-    return model, train_dataloader, train_dataloader, device
+    return model, train_dataloader, test_dataloader, device
 
 
 if __name__ == '__main__':

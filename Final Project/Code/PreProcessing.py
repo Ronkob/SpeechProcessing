@@ -156,7 +156,7 @@ def load_data(mode, data_path):
         label = txt.readline()
         txts.append(label)
 
-    return wavs[:1], txts[:1]
+    return wavs, txts
 
 
 class AudioDatasetV2(torch.utils.data.Dataset):
@@ -210,8 +210,9 @@ train_audio_transforms = nn.Sequential(
     #                                      "f_min": 80, "f_max":300,  # frequencies are in Hz,
     #                                      "hop_length": 512}),
     torchaudio.transforms.MelSpectrogram(sample_rate=22050, n_mels=128,
-                                         f_min=80, f_max=300,  # frequencies are in Hz,
-                                         n_fft=1024, hop_length=256),
+                                         f_min=80, f_max=5000,  # frequencies are in Hz,
+                                         n_fft=1024, hop_length=128,
+                                         ),
     torchaudio.transforms.FrequencyMasking(freq_mask_param=30),
     torchaudio.transforms.TimeMasking(time_mask_param=100),
 )

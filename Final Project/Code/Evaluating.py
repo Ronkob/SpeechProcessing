@@ -120,12 +120,12 @@ def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.de
         # all_labels_lengths = torch.cat(all_labels_lengths)
         if beam_search_decoder:
             hypos = beam_search_decoder(outputs_batch.to('cpu'))
-            outputs = [hypo[0].tokens.tolist() for hypo in hypos]
-            print("Output tokens: " + str(outputs))
+            # outputs = [hypo[0].tokens.tolist() for hypo in hypos]
+            # print("Output tokens: " + str(outputs))
             outputs_words = [hypo[0].words for hypo in hypos]
             print("Output words: " + str(outputs_words))
-            outputs_words = [' '.join(words) for words in outputs_words]
-            print("Output words: " + str(outputs_words))
+            outputs = [' '.join(words) for words in outputs_words]
+            print("Output words: " + str(outputs))
         else:
             outputs, labels = GreedyDecoder(outputs_batch.to(device), labels.to(device),
                                             labels_lengths.to(device),
@@ -138,13 +138,13 @@ def evaluate_beam_search(model, dataloader, beam_search_decoder, device=torch.de
     labels = targets
     # print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
     try:
-        outputs = [output if output.strip() != '' else '<placeholder>' for output in outputs]
+        outputs = [output if output.strip() != '' else '<placeholder>' for output in predictions]
         wer_score = wer(outputs, labels)
         cer_score = cer(outputs, labels)
     except Exception as e:
         try:
             # outputs = [PreProcessing.labels_to_text(output) for output in predictions]
-            outputs = [output.strip() if output.strip() != '' else '<placeholder>' for output in outputs_words]
+            outputs = [output.strip() if output.strip() != '' else '<placeholder>' for output in predictions]
             labels = [PreProcessing.labels_to_text(label.tolist()).strip() for label in targets]
             print("Outputs: " + str(outputs) + "\nLabels: " + str(labels))
             wer_score = wer(outputs, labels)

@@ -40,7 +40,7 @@ class PhaseFourModel(torch.nn.Module):
         self.fc3 = nn.Linear(32, num_classes)
 
         # Dropout
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
